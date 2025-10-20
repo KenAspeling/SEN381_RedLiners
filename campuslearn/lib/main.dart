@@ -1,4 +1,23 @@
+import 'package:campuslearn/theme/theme_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:campuslearn/pages/home_page.dart';
+import 'package:campuslearn/pages/create_page.dart';
+import 'package:campuslearn/pages/message_page.dart';
+import 'package:campuslearn/pages/notification_page.dart';
+import 'package:campuslearn/pages/query_page.dart';
+import 'package:campuslearn/pages/profile_page.dart';
+import 'package:campuslearn/pages/settings_page.dart';
+import 'package:campuslearn/pages/help_page.dart';
+import 'package:campuslearn/pages/about_page.dart';
+import 'package:campuslearn/pages/login_page.dart';
+import 'package:campuslearn/widgets/app_drawer.dart';
+import 'package:campuslearn/widgets/left_sidebar.dart';
+import 'package:campuslearn/widgets/right_sidebar.dart';
+import 'package:campuslearn/widgets/search_delegate.dart';
+import 'package:campuslearn/services/auth_service.dart';
+import 'package:campuslearn/providers/theme_provider.dart';
+import 'package:campuslearn/theme/app_theme.dart';
 
 void main() {
   runApp(const MyApp());
@@ -9,49 +28,128 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'CampusLearn',
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-        primaryColor: const Color(0xFFAD1F54),
-        scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-        colorScheme: const ColorScheme.light(
-          primary: Color(0xFFAD1F54),
-          secondary: Color(0xFF4CAF50),
-          surface: Colors.white,
-          background: Color(0xFFF5F5F5),
-          error: Color(0xFFE91E63),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          elevation: 1,
-          iconTheme: IconThemeData(color: Colors.black),
-          titleTextStyle: TextStyle(
-            color: Colors.black,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Colors.white,
-          selectedItemColor: Color(0xFFAD1F54),
-          unselectedItemColor: Colors.grey,
-          showUnselectedLabels: true,
-          type: BottomNavigationBarType.fixed,
-        ),
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 2,
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        useMaterial3: true,
+    return ChangeNotifierProvider(
+      create: (context) => ThemeProvider()..initialize(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          if (themeProvider.isLoading) {
+            return MaterialApp(
+              home: Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            );
+          }
+          
+          return MaterialApp(
+            title: 'Campus Learn',
+            theme: AppTheme.generateTheme(themeProvider),
+            home: const AuthWrapper(),
+          );
+        },
       ),
-      home: const MainScreen(),
     );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _isLoading = true;
+  bool _isLoggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    try {
+      final isLoggedIn = await AuthService.isLoggedIn();
+      setState(() {
+        _isLoggedIn = isLoggedIn;
+        _isLoading = false;
+      });
+      
+      // Show auto login popup if user is automatically logged in
+      if (isLoggedIn && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('Auto Login - Welcome back!'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        });
+      }
+    } catch (e) {
+      print('Error checking auth status: $e');
+      setState(() {
+        _isLoggedIn = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: context.appColors.background,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: context.appColors.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  Icons.school,
+                  size: 40,
+                  color: context.appColors.background,
+                ),
+              ),
+              SizedBox(height: 20),
+              Text(
+                'Campus Learn',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: context.appColors.primary,
+                ),
+              ),
+              SizedBox(height: 20),
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  context.appColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _isLoggedIn ? const MainScreen() : const LoginPage();
   }
 }
 
@@ -65,11 +163,12 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const CreateScreen(),
-    const MessagesScreen(),
-    const NotificationsScreen(),
+  static const List<Widget> _pages = <Widget>[
+    HomePage(),
+    CreatePage(),
+    MessagePage(),
+    NotificationPage(),
+    QueryPage(),
   ];
 
   void _onItemTapped(int index) {
@@ -78,215 +177,38 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle_outline),
-            label: 'Create',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.message),
-            label: 'Messages',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Notifications',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Image.asset(
-          'assets/images/logo.png',
-          height: 80,
-          fit: BoxFit.contain,
-        ),
-        centerTitle: true,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            onPressed: () {},
-          ),
-        ],
-      ),
-      body: ListView(
-        children: [
-          _buildPostCard(
-            context,
-            tag: 'WPR',
-            tagColor: Colors.orange,
-            status: 'UNANSWERED',
-            statusColor: Colors.orange,
-            author: 'Ryno Meiring',
-            time: '2h',
-            title: 'How do I locally host a server in EJS?',
-            content: 'I\'m currently learning how to use EJS (Embedded Javascript) for rendering dynamic web pages...',
-            votes: 34,
-            answers: 0,
-          ),
-          _buildPostCard(
-            context,
-            tag: 'SEN',
-            tagColor: Colors.blue,
-            status: 'ANSWERED',
-            statusColor: Colors.green,
-            author: 'Software Engineering',
-            time: '4h',
-            title: 'Who can quickly learn Figma for me',
-            content: 'I\'ve recently started exploring UI/UX design and have heard that Figma is one of the best tools...',
-            votes: 34,
-            answers: 43,
-          ),
-          _buildPostCard(
-            context,
-            tag: 'DBD',
-            tagColor: const Color(0xFFE91E63),
-            status: 'ANSWERED',
-            statusColor: Colors.green,
-            author: 'Database Development',
-            time: '1d',
-            title: 'Is PostgreSQL better than MySQL?',
-            content: 'I\'ve been learning about different database management systems, and I keep coming across...',
-            votes: 34,
-            answers: 43,
-          ),
-          _buildPostCard(
-            context,
-            tag: 'INL',
-            tagColor: Colors.purple,
-            status: 'ANSWERED',
-            statusColor: Colors.green,
-            author: 'Innovation and Leadership',
-            time: '3d',
-            title: 'Was there a test this week?',
-            content: 'I\'ve been trying to keep up with all the class announcements and assignments, but I\'m not sure if...',
-            votes: 0,
-            answers: 43,
-          ),
-        ],
-      ),
-      drawer: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.75,
-        child: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
+  Widget _buildNavItem(BuildContext context, int index, IconData icon, String label) {
+    final isSelected = _selectedIndex == index;
+    
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.only(top: 8),
+        child: InkResponse(
+          onTap: () => _onItemTapped(index),
+          splashColor: context.appColors.background.withOpacity(0.3),
+          highlightColor: Colors.transparent,
+          radius: 28,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFAD1F54),
+              Icon(
+                icon,
+                color: isSelected 
+                  ? Colors.white 
+                  : context.appColors.overlay,
+                size: 24,
+              ),
+              if (isSelected) ...[
+                SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    const CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.white,
-                      child: Icon(
-                        Icons.person,
-                        size: 40,
-                        color: Color(0xFFAD1F54),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Student Name',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Text(
-                      'student@campus.edu',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.dashboard),
-                title: const Text('Dashboard'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.book),
-                title: const Text('My Courses'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.assignment),
-                title: const Text('Assignments'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.grade),
-                title: const Text('Grades'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Settings'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.help_outline),
-                title: const Text('Help & Support'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('Logout'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
+              ],
             ],
           ),
         ),
@@ -294,168 +216,160 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPostCard(
-    BuildContext context, {
-    required String tag,
-    required Color tagColor,
-    required String status,
-    required Color statusColor,
-    required String author,
-    required String time,
-    required String title,
-    required String content,
-    required int votes,
-    required int answers,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: tagColor,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    tag,
-                    style: const TextStyle(
+  // Check if screen is desktop size
+  bool _isDesktop(BuildContext context) {
+    return MediaQuery.of(context).size.width > 900;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        final isDesktop = _isDesktop(context);
+        
+        if (isDesktop) {
+          // Desktop layout with sidebars
+          return Scaffold(
+            appBar: AppBar(
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    child: Icon(
+                      Icons.school,
+                      size: 24,
                       color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    status,
+                  SizedBox(width: 8),
+                  Text(
+                    'Campus Learn',
                     style: TextStyle(
-                      color: statusColor,
-                      fontSize: 12,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
+                ],
+              ),
+              backgroundColor: context.appColors.primary,
+              foregroundColor: context.appColors.background,
+              automaticallyImplyLeading: false, // Remove hamburger menu on desktop
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () {
+                    showSearch(
+                      context: context,
+                      delegate: CustomSearchDelegate(),
+                    );
+                  },
                 ),
-                const Spacer(),
-                Text(
-                  '$author \u00b7 $time',
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 12,
+                IconButton(
+                  icon: const Icon(Icons.person),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const ProfilePage()),
+                    );
+                  },
+                ),
+              ],
+            ),
+            body: Row(
+              children: [
+                // Left sidebar with navigation
+                LeftSidebar(
+                  selectedIndex: _selectedIndex,
+                  onNavigationTap: _onItemTapped,
+                ),
+                // Main content area
+                Expanded(
+                  child: Container(
+                    color: context.appColors.background,
+                    child: _pages.elementAt(_selectedIndex),
                   ),
                 ),
+                // Right sidebar
+                const RightSidebar(),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+          );
+        } else {
+          // Mobile/tablet layout with bottom navigation
+          return Scaffold(
+            drawer: const AppDrawer(),
+            appBar: AppBar(
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    child: Icon(
+                      Icons.school,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Campus Learn',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              content,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black54,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.thumb_up_outlined, size: 20, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  '$votes',
-                  style: const TextStyle(color: Colors.grey),
+              backgroundColor: context.appColors.primary,
+              foregroundColor: context.appColors.background,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () {
+                    showSearch(
+                      context: context,
+                      delegate: CustomSearchDelegate(),
+                    );
+                  },
                 ),
-                const SizedBox(width: 8),
-                const Icon(Icons.thumb_down_outlined, size: 20, color: Colors.grey),
-                const SizedBox(width: 4),
-                const Text('0', style: TextStyle(color: Colors.grey)),
-                const SizedBox(width: 16),
-                const Icon(Icons.comment_outlined, size: 20, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  '$answers',
-                  style: const TextStyle(color: Colors.grey),
+                IconButton(
+                  icon: const Icon(Icons.person),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const ProfilePage()),
+                    );
+                  },
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class CreateScreen extends StatelessWidget {
-  const CreateScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Post'),
-      ),
-      body: const Center(
-        child: Text(
-          'Create Screen',
-          style: TextStyle(fontSize: 24),
-        ),
-      ),
-    );
-  }
-}
-
-class MessagesScreen extends StatelessWidget {
-  const MessagesScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Messages'),
-      ),
-      body: const Center(
-        child: Text(
-          'Messages Screen',
-          style: TextStyle(fontSize: 24),
-        ),
-      ),
-    );
-  }
-}
-
-class NotificationsScreen extends StatelessWidget {
-  const NotificationsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-      ),
-      body: const Center(
-        child: Text(
-          'Notifications Screen',
-          style: TextStyle(fontSize: 24),
-        ),
-      ),
+            body: Center(
+              child: _pages.elementAt(_selectedIndex),
+            ),
+            bottomNavigationBar: Material(
+              color: context.appColors.primary,
+              elevation: 8,
+              child: SafeArea(
+                top: false,
+                child: Container(
+                  height: kBottomNavigationBarHeight + 8,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildNavItem(context, 0, Icons.home, 'Home'),
+                      _buildNavItem(context, 4, Icons.live_help, 'Tickets'),
+                      _buildNavItem(context, 1, Icons.add_box, 'Create'),
+                      _buildNavItem(context, 2, Icons.message, 'Messages'),
+                      _buildNavItem(context, 3, Icons.notifications, 'Updates'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 }
