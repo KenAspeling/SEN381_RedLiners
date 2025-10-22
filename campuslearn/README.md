@@ -14,17 +14,6 @@ A cross-platform learning management system built with Flutter and ASP.NET Core,
 - **Dark Mode Support:** Comfortable viewing in any environment
 - **Tutor/Student Roles:** Role-based access and permissions
 
-## 🚀 Quick Start
-
-### For Users (Download & Use)
-
-**No setup required!** Download the latest release:
-
-👉 **[Download CampusLearn](https://github.com/YOUR_USERNAME/campuslearn/releases/latest)**
-
-- **Android:** Download and install the APK
-- **Windows:** Download ZIP, extract, and run
-
 ### For Developers (Local Development)
 
 #### Prerequisites
@@ -64,13 +53,6 @@ flutter run -d windows     # Windows
 flutter run -d chrome      # Web
 flutter run                # Connected device
 ```
-
-## 📖 Documentation
-
-- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Complete guide to hosting your app
-- **[Quick Start Deployment](QUICK_START_DEPLOYMENT.md)** - 30-minute deployment checklist
-- **[Password Reset Setup](PASSWORD_RESET_EMAIL_SETUP.md)** - Email integration guide
-- **[Code Cleanup Report](CLEANUP_REPORT.md)** - Codebase health status
 
 ## 🛠 Technology Stack
 
@@ -115,24 +97,6 @@ campuslearn/
 └── CHATBOT TEMP/          # AI chatbot service
 ```
 
-## 🌐 Deployment
-
-### Free Hosting Options
-
-1. **Railway.app** (Recommended)
-   - 500 hours/month free
-   - Built-in PostgreSQL
-   - Auto-deployment from GitHub
-
-2. **Render.com**
-   - Free tier available
-   - PostgreSQL included
-   - Easy setup
-
-### Deploy in 30 Minutes
-
-Follow the [Quick Start Deployment Guide](QUICK_START_DEPLOYMENT.md) to deploy your app for free!
-
 ## 🔧 Configuration
 
 ### Backend (appsettings.json)
@@ -168,26 +132,6 @@ static const String productionUrl = String.fromEnvironment(
 );
 ```
 
-## 📱 Building for Distribution
-
-### Android
-
-```bash
-# Build APK with production backend
-build_android.bat https://your-backend-url.railway.app
-```
-
-Output: `build/app/outputs/flutter-apk/app-release.apk`
-
-### Windows
-
-```bash
-# Build Windows executable
-build_windows.bat https://your-backend-url.railway.app
-```
-
-Output: `CampusLearn-Windows-v1.0.0/`
-
 ## 🧪 Testing
 
 ```bash
@@ -219,7 +163,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👥 Authors
 
-- **Your Name** - Initial work
+- **Ken Aspeling 600551**
+- **Neo Rankapole 600563**
+- **Tshifhiwa Maude 576941**
+- **Trevor Mutendera 577604**
+- **Johannes Cornelius Muller 578294**
 
 ## 🙏 Acknowledgments
 
@@ -227,21 +175,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Flutter team for the amazing cross-platform framework
 - ASP.NET Core team for the robust backend framework
 - All contributors and testers
-
-## 📞 Support
-
-For issues, questions, or suggestions:
-
-1. Check the [Deployment Guide](DEPLOYMENT_GUIDE.md)
-2. Review [existing issues](https://github.com/YOUR_USERNAME/campuslearn/issues)
-3. Create a new issue if needed
-
-## 🔒 Security
-
-- Never commit credentials to GitHub
-- Use environment variables for secrets
-- Keep dependencies updated
-- Use HTTPS in production
 
 ## 📊 Status
 
