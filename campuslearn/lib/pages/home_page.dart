@@ -4,6 +4,7 @@ import 'package:campuslearn/services/topic_service.dart';
 import 'package:campuslearn/services/auth_service.dart';
 import 'package:campuslearn/models/topic.dart';
 import 'package:campuslearn/widgets/topic_detail_overlay.dart';
+import 'package:campuslearn/pages/user_profile_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,20 +16,22 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Topic> _topics = [];
   bool _isLoading = true;
-  bool _isCurrentUserTutor = false;
+  bool _isCurrentUserAdmin = false;
+  String _selectedFilter = 'All'; // All, Topics, Posts
+  String? _selectedModule; // Filter by specific module
 
   @override
   void initState() {
     super.initState();
     _loadTopics();
-    _checkTutorStatus();
+    _checkAdminStatus();
   }
 
-  Future<void> _checkTutorStatus() async {
-    final isTutor = await AuthService.isTutor();
+  Future<void> _checkAdminStatus() async {
+    final isAdmin = await AuthService.isAdmin();
     if (mounted) {
       setState(() {
-        _isCurrentUserTutor = isTutor;
+        _isCurrentUserAdmin = isAdmin;
       });
     }
   }
@@ -70,6 +73,31 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshTopics() async {
     await _loadTopics();
+  }
+
+  List<Topic> _getFilteredTopics() {
+    var filtered = _topics;
+
+    // Filter by type (Topics vs Posts)
+    if (_selectedFilter == 'Topics') {
+      filtered = filtered.where((topic) => topic.type == 3).toList(); // Type 3 = Topic
+    } else if (_selectedFilter == 'Posts') {
+      filtered = filtered.where((topic) => topic.type == 2).toList(); // Type 2 = Post
+    }
+
+    // Filter by module if selected
+    if (_selectedModule != null && _selectedModule!.isNotEmpty) {
+      filtered = filtered.where((topic) => topic.moduleName == _selectedModule).toList();
+    }
+
+    return filtered;
+  }
+
+  Set<String> _getAvailableModules() {
+    return _topics
+        .where((topic) => topic.moduleName != null)
+        .map((topic) => topic.moduleName!)
+        .toSet();
   }
 
   Future<void> _toggleLike(Topic topic) async {
@@ -123,7 +151,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _deleteTopic(Topic topic) async {
-    if (!_isCurrentUserTutor) return;
+    if (!_isCurrentUserAdmin) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -246,28 +274,90 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
+    final filteredTopics = _getFilteredTopics();
+    final availableModules = _getAvailableModules();
+
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: _getContentWidth(context),
         ),
-        child: RefreshIndicator(
-          onRefresh: _refreshTopics,
-          color: context.appColors.primary,
-          child: ListView.builder(
-            padding: EdgeInsets.all(16),
-            itemCount: _topics.length,
-            itemBuilder: (context, index) {
-              final topic = _topics[index];
+        child: Column(
+          children: [
+            // Filter chips
+            Container(
+              height: 60,
+              decoration: BoxDecoration(
+                color: context.appColors.surface,
+                border: Border(
+                  bottom: BorderSide(color: context.appColors.border, width: 1),
+                ),
+              ),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                children: [
+                  _buildFilterChip('All', _topics.length),
+                  SizedBox(width: 8),
+                  _buildFilterChip('Topics', _topics.where((t) => t.type == 3).length),
+                  SizedBox(width: 8),
+                  _buildFilterChip('Posts', _topics.where((t) => t.type == 2).length),
+                  if (availableModules.isNotEmpty) ...[
+                    SizedBox(width: 16),
+                    Container(
+                      width: 1,
+                      color: context.appColors.border,
+                      margin: EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    SizedBox(width: 16),
+                    ...availableModules.map((module) => Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: _buildModuleChip(module),
+                    )),
+                  ],
+                ],
+              ),
+            ),
+            // Topics list
+            Expanded(
+              child: filteredTopics.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.filter_list_off,
+                            size: 64,
+                            color: context.appColors.textLight,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No $_selectedFilter found',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: context.appColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _refreshTopics,
+                      color: context.appColors.primary,
+                      child: ListView.builder(
+                        padding: EdgeInsets.all(16),
+                        itemCount: filteredTopics.length,
+                        itemBuilder: (context, index) {
+                          final topic = filteredTopics[index];
               return GestureDetector(
                 onTap: () => _openTopicDetail(topic),
                 child: Card(
                   margin: EdgeInsets.only(bottom: 16),
-                  elevation: 2,
+                  elevation: topic.isAnnouncement ? 4 : 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: topic.isAnnouncement 
-                        ? BorderSide(color: Colors.blue, width: 2)
+                    side: topic.isAnnouncement
+                        ? BorderSide(color: context.appColors.primary, width: 2)
                         : BorderSide.none,
                   ),
                   child: Padding(
@@ -275,68 +365,182 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Topic badge for announcements
+                      if (topic.isAnnouncement)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [context.appColors.primary, context.appColors.primaryDark],
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: context.appColors.primary.withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.campaign,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'TOPIC',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                width: 5,
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [context.appColors.primary, context.appColors.primaryDark],
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: context.appColors.primary.withOpacity(0.3),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.book,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        topic.moduleName ?? "General",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       // Topic header with author info
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: context.appColors.primary,
-                            child: Text(
-                              topic.authorDisplayName[0].toUpperCase(),
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: topic.authorId != null && !topic.isAnonymous
+                                  ? () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => UserProfilePage(
+                                            userId: topic.authorId!,
+                                            userName: topic.authorDisplayName,
+                                            userEmail: topic.authorEmail,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  : null,
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: context.appColors.primary,
+                                    child: Text(
+                                      topic.authorDisplayName[0].toUpperCase(),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              topic.authorDisplayName,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color: context.appColors.textPrimary,
+                                                fontSize: 14,
+                                                decoration: topic.isAnonymous
+                                                    ? TextDecoration.none
+                                                    : TextDecoration.underline,
+                                              ),
+                                            ),
+                                            if (topic.authorEmail == 'tutor@campus.edu') ...[
+                                              SizedBox(width: 6),
+                                              Container(
+                                                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  'Tutor',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                        Text(
+                                          topic.timeAgo,
+                                          style: TextStyle(
+                                            color: context.appColors.textLight,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      topic.authorDisplayName,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: context.appColors.textPrimary,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    if (topic.authorEmail == 'tutor@campus.edu') ...[
-                                      SizedBox(width: 6),
-                                      Container(
-                                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue,
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          'Tutor',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                Text(
-                                  topic.timeAgo,
-                                  style: TextStyle(
-                                    color: context.appColors.textLight,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Tutor action buttons
-                          if (_isCurrentUserTutor) ...[
+                          // Admin action buttons
+                          if (_isCurrentUserAdmin) ...[
                             IconButton(
                               icon: Icon(
                                 Icons.delete_outline,
@@ -346,17 +550,10 @@ class _HomePageState extends State<HomePage> {
                               onPressed: () => _deleteTopic(topic),
                               tooltip: 'Delete topic',
                             ),
-                          ] else ...[
-                            IconButton(
-                              icon: Icon(Icons.more_vert, color: context.appColors.textLight),
-                              onPressed: () {
-                                // TODO: Show post menu (report, share, etc.)
-                              },
-                            ),
-                          ],
+                          ]
                         ],
                       ),
-                      
+
                       SizedBox(height: 12),
                       
                       // Topic title
@@ -438,42 +635,6 @@ class _HomePageState extends State<HomePage> {
                               ],
                             ),
                           ),
-                          
-                          SizedBox(width: 24),
-                          
-                          // Share button
-                          GestureDetector(
-                            onTap: () {
-                              // TODO: Implement share functionality
-                            },
-                            child: Row(
-                              children: [
-                                Icon(Icons.share_outlined, size: 20, color: context.appColors.textLight),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Share', 
-                                  style: TextStyle(color: context.appColors.textLight),
-                                ),
-                              ],
-                            ),
-                          ),
-                          
-                          Spacer(),
-                          
-                          // View count
-                          Row(
-                            children: [
-                              Icon(Icons.visibility_outlined, size: 16, color: context.appColors.textLight),
-                              SizedBox(width: 4),
-                              Text(
-                                topic.formattedViewCount, 
-                                style: TextStyle(
-                                  fontSize: 12, 
-                                  color: context.appColors.textLight,
-                                ),
-                              ),
-                            ],
-                          ),
                         ],
                       ),
                     ],
@@ -483,8 +644,82 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
+                      ),
+                    ),
+            ],
+          ),
         ),
+      );
+  }
+
+  Widget _buildFilterChip(String label, int count) {
+    final isSelected = _selectedFilter == label;
+
+    return FilterChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (count > 0) ...[
+            SizedBox(width: 4),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white : context.appColors.primary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? context.appColors.primary : Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          _selectedFilter = label;
+          _selectedModule = null; // Clear module filter when changing type filter
+        });
+      },
+      selectedColor: context.appColors.primary.withOpacity(0.2),
+      checkmarkColor: context.appColors.primary,
+    );
+  }
+
+  Widget _buildModuleChip(String module) {
+    final isSelected = _selectedModule == module;
+
+    return FilterChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.book, size: 14, color: isSelected ? Colors.white : context.appColors.primary),
+          SizedBox(width: 4),
+          Text(module),
+        ],
+      ),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          if (selected) {
+            _selectedModule = module;
+          } else {
+            _selectedModule = null;
+          }
+        });
+      },
+      selectedColor: context.appColors.primary,
+      backgroundColor: context.appColors.surface,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : context.appColors.textPrimary,
+      ),
+      checkmarkColor: Colors.white,
     );
   }
 }

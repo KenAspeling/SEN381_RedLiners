@@ -4,7 +4,9 @@ import 'package:campuslearn/models/comment.dart';
 import 'package:campuslearn/services/comment_service.dart';
 import 'package:campuslearn/services/topic_service.dart';
 import 'package:campuslearn/services/auth_service.dart';
+import 'package:campuslearn/services/subscription_service.dart';
 import 'package:campuslearn/theme/theme_extensions.dart';
+import 'package:campuslearn/pages/user_profile_page.dart';
 
 class TopicDetailOverlay extends StatefulWidget {
   final Topic topic;
@@ -28,11 +30,22 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
   final _commentController = TextEditingController();
   final _scrollController = ScrollController();
 
+  // Local state for topic like status
+  late bool _isLiked;
+  late int _likeCount;
+
+  // Local state for subscription status
+  bool _isSubscribed = false;
+  bool _isLoadingSubscription = false;
+
   @override
   void initState() {
     super.initState();
+    _isLiked = widget.topic.isLiked;
+    _likeCount = widget.topic.likeCount;
     _loadComments();
     _checkTutorStatus();
+    _checkSubscriptionStatus();
   }
 
   Future<void> _checkTutorStatus() async {
@@ -41,6 +54,87 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
       setState(() {
         _isCurrentUserTutor = isTutor;
       });
+    }
+  }
+
+  Future<void> _checkSubscriptionStatus() async {
+    try {
+      final isSubscribed = await SubscriptionService.isSubscribed(
+        subscribableType: 1, // 1 = Topic
+        subscribableId: widget.topic.id,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isSubscribed = isSubscribed;
+        });
+      }
+    } catch (e) {
+      print('Error checking subscription status: $e');
+    }
+  }
+
+  Future<void> _toggleSubscription() async {
+    if (_isLoadingSubscription) return;
+    if (!mounted) return;
+
+    print('[TOPIC OVERLAY] Toggle subscription called. Current state: $_isSubscribed');
+
+    if (mounted) {
+      setState(() {
+        _isLoadingSubscription = true;
+      });
+    }
+
+    try {
+      final newSubscriptionStatus = await SubscriptionService.toggleSubscription(
+        subscribableType: 1, // 1 = Topic
+        subscribableId: widget.topic.id,
+        currentlySubscribed: _isSubscribed,
+      );
+
+      print('[TOPIC OVERLAY] New subscription status: $newSubscriptionStatus');
+
+      if (mounted) {
+        setState(() {
+          _isSubscribed = newSubscriptionStatus;
+          _isLoadingSubscription = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  _isSubscribed ? Icons.notifications_active : Icons.notifications_off,
+                  color: Colors.white,
+                ),
+                SizedBox(width: 8),
+                Text(_isSubscribed
+                  ? 'Subscribed! You\'ll be notified of new comments'
+                  : 'Unsubscribed from notifications'),
+              ],
+            ),
+            backgroundColor: _isSubscribed ? Colors.green : Colors.grey,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[TOPIC OVERLAY ERROR] Failed to toggle subscription: $e');
+
+      if (mounted) {
+        setState(() {
+          _isLoadingSubscription = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update subscription: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -158,15 +252,64 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
     }
   }
 
+  Future<void> _toggleTopicLike() async {
+    // Optimistically update UI
+    final wasLiked = _isLiked;
+    final previousCount = _likeCount;
+
+    setState(() {
+      _isLiked = !_isLiked;
+      _likeCount = _isLiked ? _likeCount + 1 : (_likeCount > 0 ? _likeCount - 1 : 0);
+    });
+
+    try {
+      await TopicService.toggleLike(widget.topic.id);
+
+      if (mounted) {
+        // Notify parent to refresh the topic list
+        widget.onTopicUpdated?.call();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isLiked ? 'Added to likes' : 'Removed from likes'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      // Revert on error
+      if (mounted) {
+        setState(() {
+          _isLiked = wasLiked;
+          _likeCount = previousCount;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update like: ${e.toString()}'),
+            backgroundColor: context.appColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _toggleCommentLike(Comment comment) async {
     try {
-      final updatedComment = await CommentService.toggleLike(comment.id);
-      
+      final isLiked = await CommentService.toggleLike(comment.id);
+
       if (mounted) {
         setState(() {
           final index = _comments.indexWhere((c) => c.id == comment.id);
           if (index != -1) {
-            _comments[index] = updatedComment;
+            // Update the comment with new like status
+            final oldComment = _comments[index];
+            _comments[index] = oldComment.copyWith(
+              isLiked: isLiked,
+              likeCount: isLiked
+                ? oldComment.likeCount + 1
+                : (oldComment.likeCount > 0 ? oldComment.likeCount - 1 : 0),
+            );
           }
         });
       }
@@ -206,8 +349,7 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
 
     if (confirmed == true) {
       try {
-        final tutorEmail = await AuthService.getUserEmail() ?? '';
-        await CommentService.deleteCommentAsTutor(comment.id, tutorEmail);
+        await CommentService.deleteComment(comment.id);
         
         // Remove from local list
         if (mounted) {
@@ -316,44 +458,90 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Author info
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: context.appColors.primary,
-                                      child: Text(
-                                        widget.topic.authorDisplayName[0].toUpperCase(),
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
+                                GestureDetector(
+                                  onTap: widget.topic.authorId != null && !widget.topic.isAnonymous
+                                      ? () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => UserProfilePage(
+                                                userId: widget.topic.authorId!,
+                                                userName: widget.topic.authorDisplayName,
+                                                userEmail: widget.topic.authorEmail,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      : null,
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor: context.appColors.primary,
+                                        child: Text(
+                                          widget.topic.authorDisplayName[0].toUpperCase(),
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            widget.topic.authorDisplayName,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              color: context.appColors.textPrimary,
-                                              fontSize: 16,
+                                      SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    widget.topic.authorDisplayName,
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w600,
+                                                      color: widget.topic.isAnonymous
+                                                          ? context.appColors.textPrimary
+                                                          : context.appColors.primary,
+                                                      fontSize: 16,
+                                                      decoration: widget.topic.isAnonymous
+                                                          ? TextDecoration.none
+                                                          : TextDecoration.underline,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (widget.topic.authorEmail == 'tutor@campus.edu') ...[
+                                                  SizedBox(width: 6),
+                                                  Container(
+                                                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.blue,
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: Text(
+                                                      'Tutor',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
-                                          ),
-                                          Text(
-                                            widget.topic.timeAgo,
-                                            style: TextStyle(
-                                              color: context.appColors.textLight,
-                                              fontSize: 12,
+                                            Text(
+                                              widget.topic.timeAgo,
+                                              style: TextStyle(
+                                                color: context.appColors.textLight,
+                                                fontSize: 12,
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                                 
                                 SizedBox(height: 16),
@@ -380,21 +568,97 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
                                 ),
                                 
                                 SizedBox(height: 16),
-                                
-                                // Topic stats
+
+                                // Topic stats and actions
                                 Row(
                                   children: [
-                                    Icon(Icons.favorite_border, size: 18, color: context.appColors.textLight),
-                                    SizedBox(width: 4),
-                                    Text(widget.topic.formattedLikeCount, style: TextStyle(color: context.appColors.textLight)),
+                                    // Like button
+                                    GestureDetector(
+                                      onTap: _toggleTopicLike,
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            _isLiked ? Icons.favorite : Icons.favorite_border,
+                                            size: 18,
+                                            color: _isLiked ? Colors.red : context.appColors.textLight,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            _likeCount.toString(),
+                                            style: TextStyle(
+                                              color: _isLiked ? Colors.red : context.appColors.textLight,
+                                              fontWeight: _isLiked ? FontWeight.w500 : FontWeight.normal,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                     SizedBox(width: 16),
                                     Icon(Icons.comment_outlined, size: 18, color: context.appColors.textLight),
                                     SizedBox(width: 4),
                                     Text('${_comments.length}', style: TextStyle(color: context.appColors.textLight)),
                                     SizedBox(width: 16),
-                                    Icon(Icons.visibility_outlined, size: 18, color: context.appColors.textLight),
-                                    SizedBox(width: 4),
-                                    Text(widget.topic.formattedViewCount, style: TextStyle(color: context.appColors.textLight)),
+                                    Spacer(),
+                                    // Subscribe button
+                                    Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: _isLoadingSubscription ? null : _toggleSubscription,
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: _isSubscribed
+                                                ? context.appColors.primary.withOpacity(0.1)
+                                                : context.appColors.surface,
+                                            border: Border.all(
+                                              color: _isSubscribed
+                                                  ? context.appColors.primary
+                                                  : context.appColors.border,
+                                              width: 1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (_isLoadingSubscription)
+                                                SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                                      context.appColors.primary,
+                                                    ),
+                                                  ),
+                                                )
+                                              else
+                                                Icon(
+                                                  _isSubscribed
+                                                      ? Icons.notifications_active
+                                                      : Icons.notifications_none,
+                                                  size: 16,
+                                                  color: _isSubscribed
+                                                      ? context.appColors.primary
+                                                      : context.appColors.textSecondary,
+                                                ),
+                                              SizedBox(width: 6),
+                                              Text(
+                                                _isSubscribed ? 'Subscribed' : 'Subscribe',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: _isSubscribed
+                                                      ? context.appColors.primary
+                                                      : context.appColors.textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
@@ -511,12 +775,15 @@ class _TopicDetailOverlayState extends State<TopicDetailOverlay> {
                                               children: [
                                                 Row(
                                                   children: [
-                                                    Text(
-                                                      comment.authorDisplayName,
-                                                      style: TextStyle(
-                                                        fontWeight: FontWeight.w600,
-                                                        color: context.appColors.textPrimary,
-                                                        fontSize: 14,
+                                                    Flexible(
+                                                      child: Text(
+                                                        comment.authorDisplayName,
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.w600,
+                                                          color: context.appColors.textPrimary,
+                                                          fontSize: 14,
+                                                        ),
+                                                        overflow: TextOverflow.ellipsis,
                                                       ),
                                                     ),
                                                     if (comment.authorEmail == 'tutor@campus.edu') ...[

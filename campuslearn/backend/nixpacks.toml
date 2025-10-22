@@ -1,0 +1,11 @@
+# Railway.app Configuration for CampusLearn Backend
+# This file tells Railway how to build and run the .NET application
+
+[phases.setup]
+nixPkgs = ["dotnet-sdk_8"]
+
+[phases.build]
+cmds = ["dotnet restore", "dotnet publish -c Release -o out"]
+
+[start]
+cmd = "cd out && dotnet CampusLearnBackend.dll"

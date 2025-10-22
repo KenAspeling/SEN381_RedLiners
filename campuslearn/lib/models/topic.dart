@@ -1,5 +1,6 @@
 class Topic {
   final int id;
+  final int? authorId;
   final String title;
   final String content;
   final String authorName;
@@ -11,9 +12,13 @@ class Topic {
   final int viewCount;
   final bool isLiked; // Whether current user liked this topic
   final bool isAnnouncement; // Whether this is a tutor announcement
+  final bool isAnonymous; // Whether this post is anonymous
+  final String? moduleName; // Name of the module/course this topic belongs to
+  final int? type; // Post type: 1=Comment, 2=Post, 3=Topic
 
   Topic({
     required this.id,
+    this.authorId,
     required this.title,
     required this.content,
     required this.authorName,
@@ -25,12 +30,16 @@ class Topic {
     required this.viewCount,
     this.isLiked = false,
     this.isAnnouncement = false,
+    this.isAnonymous = false,
+    this.moduleName,
+    this.type,
   });
 
   /// Create Topic from JSON response (from C# backend API)
   factory Topic.fromJson(Map<String, dynamic> json) {
     return Topic(
       id: json['id'] as int,
+      authorId: json['userId'] as int?,
       title: json['title'] as String,
       content: json['content'] as String,
       authorName: json['authorName'] as String,
@@ -42,6 +51,9 @@ class Topic {
       viewCount: json['viewCount'] as int? ?? 0,
       isLiked: json['isLiked'] as bool? ?? false,
       isAnnouncement: json['isAnnouncement'] as bool? ?? false,
+      isAnonymous: json['isAnonymous'] as bool? ?? false,
+      moduleName: json['moduleName'] as String?,
+      type: json['type'] as int?,
     );
   }
 
@@ -58,6 +70,7 @@ class Topic {
   /// Create Topic with updated data (for state management)
   Topic copyWith({
     int? id,
+    int? authorId,
     String? title,
     String? content,
     String? authorName,
@@ -69,9 +82,13 @@ class Topic {
     int? viewCount,
     bool? isLiked,
     bool? isAnnouncement,
+    bool? isAnonymous,
+    String? moduleName,
+    int? type,
   }) {
     return Topic(
       id: id ?? this.id,
+      authorId: authorId ?? this.authorId,
       title: title ?? this.title,
       content: content ?? this.content,
       authorName: authorName ?? this.authorName,
@@ -83,6 +100,9 @@ class Topic {
       viewCount: viewCount ?? this.viewCount,
       isLiked: isLiked ?? this.isLiked,
       isAnnouncement: isAnnouncement ?? this.isAnnouncement,
+      isAnonymous: isAnonymous ?? this.isAnonymous,
+      moduleName: moduleName ?? this.moduleName,
+      type: type ?? this.type,
     );
   }
 
@@ -121,7 +141,16 @@ class Topic {
 
   /// Get author display name (falls back to email username if no name)
   String get authorDisplayName {
-    if (authorName.isNotEmpty) return authorName;
+    if (authorName.isNotEmpty) {
+      
+        String formatted = authorName
+        .split('.')                            
+        .map((part) => part[0].toUpperCase() + part.substring(1))
+        .join(' '); 
+      
+      return (formatted);
+    }
+      
     return authorEmail.split('@')[0]; // Use email username as fallback
   }
 

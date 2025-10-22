@@ -38,34 +38,6 @@ class _SettingsPageState extends State<SettingsPage> {
               
               SizedBox(height: 24),
               
-              // General Section
-              _buildSectionHeader(context, 'General'),
-              Card(
-                child: Column(
-                  children: [
-                    _buildNotificationTile(context),
-                    Divider(height: 1),
-                    _buildLanguageTile(context),
-                  ],
-                ),
-              ),
-              
-              SizedBox(height: 24),
-              
-              // Account Section
-              _buildSectionHeader(context, 'Account'),
-              Card(
-                child: Column(
-                  children: [
-                    _buildChangePasswordTile(context),
-                    Divider(height: 1),
-                    _buildPrivacyTile(context),
-                  ],
-                ),
-              ),
-              
-              SizedBox(height: 24),
-              
               // Reset Section
               Card(
                 child: ListTile(

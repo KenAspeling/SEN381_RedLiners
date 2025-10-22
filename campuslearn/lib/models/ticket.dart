@@ -6,33 +6,12 @@ enum TicketStatus {
   escalated,
 }
 
-enum TicketPriority {
-  low,
-  medium,
-  high,
-  urgent,
-}
-
-enum TicketCategory {
-  mathematics,
-  computerScience,
-  physics,
-  chemistry,
-  biology,
-  writing,
-  languages,
-  engineering,
-  business,
-  generalStudy,
-  other,
-}
-
 class Ticket {
   final int id;
   final String title;
-  final String description;
-  final TicketCategory category;
-  final TicketPriority priority;
+  final String content; // Changed from description
+  final int moduleId; // Required - Changed from category
+  final String moduleName; // Required
   final TicketStatus status;
   final String studentId;
   final String studentEmail;
@@ -41,6 +20,12 @@ class Ticket {
   final String? tutorEmail;
   final String? tutorName;
   final String? response;
+  final String? attachmentUrl; // Document attachment
+  final String? attachmentName; // Original file name
+  final int? materialId; // Material ID for file attachment
+  final String? fileName; // File name
+  final String? fileType; // File MIME type
+  final int? fileSize; // File size in bytes
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? respondedAt;
@@ -50,9 +35,9 @@ class Ticket {
   Ticket({
     required this.id,
     required this.title,
-    required this.description,
-    required this.category,
-    required this.priority,
+    required this.content,
+    required this.moduleId,
+    required this.moduleName,
     required this.status,
     required this.studentId,
     required this.studentEmail,
@@ -61,6 +46,12 @@ class Ticket {
     this.tutorEmail,
     this.tutorName,
     this.response,
+    this.attachmentUrl,
+    this.attachmentName,
+    this.materialId,
+    this.fileName,
+    this.fileType,
+    this.fileSize,
     required this.createdAt,
     required this.updatedAt,
     this.respondedAt,
@@ -70,37 +61,55 @@ class Ticket {
 
   /// Create Ticket from JSON response (from C# backend API)
   factory Ticket.fromJson(Map<String, dynamic> json) {
+    // Map backend status (1=sent, 2=received, 3=responded) to TicketStatus enum
+    TicketStatus status;
+    int statusInt = json['status'] as int? ?? 1;
+    switch (statusInt) {
+      case 1:
+        status = TicketStatus.open; // Sent = Open
+        break;
+      case 2:
+        status = TicketStatus.inProgress; // Received = In Progress
+        break;
+      case 3:
+        status = TicketStatus.answered; // Responded = Answered
+        break;
+      case 4:
+        status = TicketStatus.closed;
+        break;
+      case 5:
+        status = TicketStatus.escalated;
+        break;
+      default:
+        status = TicketStatus.open;
+    }
+
     return Ticket(
-      id: json['id'] as int,
+      id: json['ticketId'] as int,
       title: json['title'] as String,
-      description: json['description'] as String,
-      category: TicketCategory.values.firstWhere(
-        (e) => e.name == json['category'],
-        orElse: () => TicketCategory.other,
-      ),
-      priority: TicketPriority.values.firstWhere(
-        (e) => e.name == json['priority'],
-        orElse: () => TicketPriority.medium,
-      ),
-      status: TicketStatus.values.firstWhere(
-        (e) => e.name == json['status'],
-        orElse: () => TicketStatus.open,
-      ),
-      studentId: json['studentId'] as String,
-      studentEmail: json['studentEmail'] as String,
-      studentName: json['studentName'] as String,
-      tutorId: json['tutorId'] as String?,
+      content: json['content'] as String,
+      moduleId: json['moduleId'] as int,
+      moduleName: json['moduleName'] as String,
+      status: status,
+      studentId: json['userId'].toString(),
+      studentEmail: json['userEmail'] as String,
+      studentName: json['userName'] as String,
+      tutorId: json['tutorId']?.toString(),
       tutorEmail: json['tutorEmail'] as String?,
       tutorName: json['tutorName'] as String?,
-      response: json['response'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-      respondedAt: json['respondedAt'] != null 
-          ? DateTime.parse(json['respondedAt'] as String) 
+      response: json['responseContent'] as String?,
+      attachmentUrl: json['attachmentUrl'] as String?,
+      attachmentName: json['attachmentName'] as String?,
+      materialId: json['materialId'] as int?,
+      fileName: json['fileName'] as String?,
+      fileType: json['fileType'] as String?,
+      fileSize: json['fileSize'] as int?,
+      createdAt: DateTime.parse(json['timeCreated'] as String),
+      updatedAt: DateTime.parse(json['timeCreated'] as String), // Use timeCreated as updatedAt
+      respondedAt: json['timeResponded'] != null
+          ? DateTime.parse(json['timeResponded'] as String)
           : null,
-      closedAt: json['closedAt'] != null 
-          ? DateTime.parse(json['closedAt'] as String) 
-          : null,
+      closedAt: null, // Not in backend yet
       rating: json['rating'] as int?,
     );
   }
@@ -109,9 +118,10 @@ class Ticket {
   Map<String, dynamic> toJson() {
     return {
       'title': title,
-      'description': description,
-      'category': category.name,
-      'priority': priority.name,
+      'content': content,
+      'moduleId': moduleId,
+      'attachmentUrl': attachmentUrl,
+      'attachmentName': attachmentName,
     };
   }
 
@@ -119,9 +129,9 @@ class Ticket {
   Ticket copyWith({
     int? id,
     String? title,
-    String? description,
-    TicketCategory? category,
-    TicketPriority? priority,
+    String? content,
+    int? moduleId,
+    String? moduleName,
     TicketStatus? status,
     String? studentId,
     String? studentEmail,
@@ -130,6 +140,12 @@ class Ticket {
     String? tutorEmail,
     String? tutorName,
     String? response,
+    String? attachmentUrl,
+    String? attachmentName,
+    int? materialId,
+    String? fileName,
+    String? fileType,
+    int? fileSize,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? respondedAt,
@@ -139,9 +155,9 @@ class Ticket {
     return Ticket(
       id: id ?? this.id,
       title: title ?? this.title,
-      description: description ?? this.description,
-      category: category ?? this.category,
-      priority: priority ?? this.priority,
+      content: content ?? this.content,
+      moduleId: moduleId ?? this.moduleId,
+      moduleName: moduleName ?? this.moduleName,
       status: status ?? this.status,
       studentId: studentId ?? this.studentId,
       studentEmail: studentEmail ?? this.studentEmail,
@@ -150,6 +166,12 @@ class Ticket {
       tutorEmail: tutorEmail ?? this.tutorEmail,
       tutorName: tutorName ?? this.tutorName,
       response: response ?? this.response,
+      attachmentUrl: attachmentUrl ?? this.attachmentUrl,
+      attachmentName: attachmentName ?? this.attachmentName,
+      materialId: materialId ?? this.materialId,
+      fileName: fileName ?? this.fileName,
+      fileType: fileType ?? this.fileType,
+      fileSize: fileSize ?? this.fileSize,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       respondedAt: respondedAt ?? this.respondedAt,
@@ -198,47 +220,50 @@ class Ticket {
     }
   }
 
-  /// Get human-readable priority text
-  String get priorityText {
-    switch (priority) {
-      case TicketPriority.low:
-        return 'Low';
-      case TicketPriority.medium:
-        return 'Medium';
-      case TicketPriority.high:
-        return 'High';
-      case TicketPriority.urgent:
-        return 'Urgent';
+  /// Calculate priority based on ticket age
+  /// Older tickets have higher priority
+  String get calculatedPriority {
+    final now = DateTime.now();
+    final age = now.difference(createdAt);
+
+    if (age.inDays > 3) {
+      return 'Urgent';
+    } else if (age.inDays >= 1) {
+      return 'High';
+    } else if (age.inHours >= 1) {
+      return 'Medium';
+    } else {
+      return 'Low';
     }
   }
 
-  /// Get human-readable category text
-  String get categoryText {
-    switch (category) {
-      case TicketCategory.mathematics:
-        return 'Mathematics';
-      case TicketCategory.computerScience:
-        return 'Computer Science';
-      case TicketCategory.physics:
-        return 'Physics';
-      case TicketCategory.chemistry:
-        return 'Chemistry';
-      case TicketCategory.biology:
-        return 'Biology';
-      case TicketCategory.writing:
-        return 'Writing';
-      case TicketCategory.languages:
-        return 'Languages';
-      case TicketCategory.engineering:
-        return 'Engineering';
-      case TicketCategory.business:
-        return 'Business';
-      case TicketCategory.generalStudy:
-        return 'General Study';
-      case TicketCategory.other:
-        return 'Other';
+  /// Get priority level (0-3) for sorting
+  /// Higher number = higher priority
+  int get priorityLevel {
+    final now = DateTime.now();
+    final age = now.difference(createdAt);
+
+    if (age.inDays > 3) {
+      return 3; // Urgent
+    } else if (age.inDays >= 1) {
+      return 2; // High
+    } else if (age.inHours >= 1) {
+      return 1; // Medium
+    } else {
+      return 0; // Low
     }
   }
+
+  /// Get human-readable priority text (uses calculated priority)
+  String get priorityText => calculatedPriority;
+
+  /// Get module display text
+  String get moduleText {
+    return moduleName;
+  }
+
+  /// Check if ticket has an attachment
+  bool get hasAttachment => attachmentUrl != null && attachmentUrl!.isNotEmpty;
 
   /// Check if ticket is waiting for tutor response
   bool get isAwaitingResponse => status == TicketStatus.open || status == TicketStatus.inProgress;
@@ -287,17 +312,19 @@ class Ticket {
     }
   }
 
-  /// Get priority color for UI
+  /// Get priority color for UI (based on calculated priority)
   String get priorityColor {
-    switch (priority) {
-      case TicketPriority.low:
+    switch (calculatedPriority) {
+      case 'Low':
         return '#4CAF50'; // Green
-      case TicketPriority.medium:
+      case 'Medium':
         return '#FF9800'; // Orange
-      case TicketPriority.high:
+      case 'High':
         return '#F44336'; // Red
-      case TicketPriority.urgent:
+      case 'Urgent':
         return '#9C27B0'; // Purple
+      default:
+        return '#2196F3'; // Blue fallback
     }
   }
 

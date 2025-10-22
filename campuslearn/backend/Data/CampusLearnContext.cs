@@ -9,157 +9,143 @@ namespace CampusLearnBackend.Data
         {
         }
 
+        // Lookup tables
+        public DbSet<AccessType> AccessTypes { get; set; }
+        public DbSet<PostType> PostTypes { get; set; }
+        public DbSet<StatusType> StatusTypes { get; set; }
+        public DbSet<SubscribableType> SubscribableTypes { get; set; }
+
+        // Core entities
         public DbSet<User> Users { get; set; }
-        public DbSet<Tutor> Tutors { get; set; }
-        public DbSet<Topic> Topics { get; set; }
-        public DbSet<Comment> Comments { get; set; }
-        public DbSet<TopicLike> TopicLikes { get; set; }
-        public DbSet<CommentLike> CommentLikes { get; set; }
+        public DbSet<Module> Modules { get; set; }
+        public DbSet<Material> Materials { get; set; }
+        public DbSet<Post> Posts { get; set; }
+        public DbSet<Like> Likes { get; set; }
+        public DbSet<Subscription> Subscriptions { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
+        public DbSet<FcmToken> FcmTokens { get; set; }
+        public DbSet<DirectMessage> DirectMessages { get; set; }
+        public DbSet<QueryTicket> QueryTickets { get; set; }
+        public DbSet<Response> Responses { get; set; }
+        public DbSet<UserModule> UserModules { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Configure lowercase table names for PostgreSQL
-            modelBuilder.Entity<User>().ToTable("users");
-            modelBuilder.Entity<Tutor>().ToTable("tutors");
-            modelBuilder.Entity<Topic>().ToTable("topics");
-            modelBuilder.Entity<Comment>().ToTable("comments");
-            modelBuilder.Entity<TopicLike>().ToTable("topic_likes");
-            modelBuilder.Entity<CommentLike>().ToTable("comment_likes");
+            // Configure lookup tables - IDs are manually assigned, not auto-generated
+            modelBuilder.Entity<AccessType>()
+                .Property(e => e.AccessId)
+                .ValueGeneratedNever();
 
-            // User entity configuration
-            modelBuilder.Entity<User>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("user_id");
-                entity.Property(e => e.Email).HasColumnName("email").IsRequired().HasMaxLength(255);
-                entity.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(100);
-                entity.Property(e => e.EncryptedPassword).HasColumnName("encrypted_password").IsRequired();
-                entity.Property(e => e.IsTutor).HasColumnName("is_tutor");
-                entity.Property(e => e.CreatedAt).HasColumnName("time_created");
-                entity.Ignore(e => e.UpdatedAt); // No updated_at in database
-                entity.Ignore(e => e.Tutor); // Ignore tutor navigation for now
-                entity.HasIndex(e => e.Email).IsUnique();
-            });
+            modelBuilder.Entity<PostType>()
+                .Property(e => e.TypeId)
+                .ValueGeneratedNever();
 
-            // Tutor entity configuration - using is_tutor flag instead
-            // The tutors table exists but we'll check is_tutor column in users table
-            modelBuilder.Entity<Tutor>().ToTable("tutors", t => t.ExcludeFromMigrations());
-            modelBuilder.Entity<Tutor>(entity =>
-            {
-                entity.HasKey(e => e.UserId);
-                entity.Property(e => e.UserId).HasColumnName("tutor_id");
-                entity.Ignore(e => e.CreatedAt);
-                entity.Ignore(e => e.UpdatedAt);
-                entity.Ignore(e => e.User); // Ignore navigation to avoid circular reference issues
-            });
+            modelBuilder.Entity<StatusType>()
+                .Property(e => e.StatusId)
+                .ValueGeneratedNever();
 
-            // Topic entity configuration
-            modelBuilder.Entity<Topic>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("topic_id");
-                entity.Property(e => e.Title).HasColumnName("title").IsRequired().HasMaxLength(255);
-                entity.Property(e => e.Content).HasColumnName("content").IsRequired();
-                entity.Property(e => e.UserId).HasColumnName("created_by");
-                entity.Property(e => e.CreatedAt).HasColumnName("time_created");
-                entity.Property(e => e.UpdatedAt).HasColumnName("time_updated");
-                entity.Property(e => e.ViewCount).HasColumnName("view_count");
-                entity.Ignore(e => e.IsAnnouncement); // No is_announcement in database
-                entity.HasOne(e => e.User)
-                      .WithMany(u => u.Topics)
-                      .HasForeignKey(e => e.UserId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+            modelBuilder.Entity<SubscribableType>()
+                .Property(e => e.TypeId)
+                .ValueGeneratedNever();
 
-            // Comment entity configuration
-            modelBuilder.Entity<Comment>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("comment_id");
-                entity.Property(e => e.Content).HasColumnName("content").IsRequired();
-                entity.Property(e => e.TopicId).HasColumnName("topic_id");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-                entity.Property(e => e.CreatedAt).HasColumnName("time_created");
-                entity.Ignore(e => e.UpdatedAt); // No updated_at in database
-                entity.HasOne(e => e.Topic)
-                      .WithMany(t => t.Comments)
-                      .HasForeignKey(e => e.TopicId)
-                      .OnDelete(DeleteBehavior.Cascade);
-                entity.HasOne(e => e.User)
-                      .WithMany(u => u.Comments)
-                      .HasForeignKey(e => e.UserId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+            // Configure UserModule composite primary key
+            modelBuilder.Entity<UserModule>()
+                .HasKey(um => new { um.UserId, um.ModuleId });
 
-            // TopicLike entity configuration
-            modelBuilder.Entity<TopicLike>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("like_id");
-                entity.Property(e => e.TopicId).HasColumnName("topic_id");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-                entity.Property(e => e.CreatedAt).HasColumnName("time_liked");
-                entity.HasIndex(e => new { e.TopicId, e.UserId }).IsUnique();
-                entity.HasOne(e => e.Topic)
-                      .WithMany(t => t.TopicLikes)
-                      .HasForeignKey(e => e.TopicId)
-                      .OnDelete(DeleteBehavior.Cascade);
-                entity.HasOne(e => e.User)
-                      .WithMany(u => u.TopicLikes)
-                      .HasForeignKey(e => e.UserId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+            // Configure unique constraint for likes (user can only like a post once)
+            modelBuilder.Entity<Like>()
+                .HasIndex(e => new { e.UserId, e.PostId })
+                .IsUnique();
 
-            // CommentLike entity configuration
-            modelBuilder.Entity<CommentLike>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("like_id");
-                entity.Property(e => e.CommentId).HasColumnName("comment_id");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-                entity.Property(e => e.CreatedAt).HasColumnName("time_liked");
-                entity.HasIndex(e => new { e.CommentId, e.UserId }).IsUnique();
-                entity.HasOne(e => e.Comment)
-                      .WithMany(c => c.CommentLikes)
-                      .HasForeignKey(e => e.CommentId)
-                      .OnDelete(DeleteBehavior.Cascade);
-                entity.HasOne(e => e.User)
-                      .WithMany(u => u.CommentLikes)
-                      .HasForeignKey(e => e.UserId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+            // Configure unique constraint for subscriptions (user can only subscribe once to same type+id)
+            modelBuilder.Entity<Subscription>()
+                .HasIndex(e => new { e.UserId, e.SubscribableType, e.SubscribableId })
+                .IsUnique();
+
+            // Configure unique constraint for FCM tokens (token must be unique)
+            modelBuilder.Entity<FcmToken>()
+                .HasIndex(e => e.Token)
+                .IsUnique();
+
+            // Configure DirectMessage relationships to avoid circular references
+            modelBuilder.Entity<DirectMessage>()
+                .HasOne(dm => dm.Sender)
+                .WithMany(u => u.SentMessages)
+                .HasForeignKey(dm => dm.SenderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DirectMessage>()
+                .HasOne(dm => dm.Recipient)
+                .WithMany(u => u.ReceivedMessages)
+                .HasForeignKey(dm => dm.RecipientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure Post self-referencing relationship for parent/child (comments)
+            modelBuilder.Entity<Post>()
+                .HasOne(p => p.ParentPost)
+                .WithMany(p => p.ChildPosts)
+                .HasForeignKey(p => p.ParentPostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Seed lookup tables with initial data
+            modelBuilder.Entity<AccessType>().HasData(
+                new AccessType { AccessId = 1, Name = "student" },
+                new AccessType { AccessId = 2, Name = "tutor" },
+                new AccessType { AccessId = 3, Name = "admin" }
+            );
+
+            modelBuilder.Entity<PostType>().HasData(
+                new PostType { TypeId = 1, Name = "comment" },
+                new PostType { TypeId = 2, Name = "post" },
+                new PostType { TypeId = 3, Name = "topic" }
+            );
+
+            modelBuilder.Entity<StatusType>().HasData(
+                new StatusType { StatusId = 1, Name = "sent" },
+                new StatusType { StatusId = 2, Name = "received" },
+                new StatusType { StatusId = 3, Name = "responded" }
+            );
+
+            modelBuilder.Entity<SubscribableType>().HasData(
+                new SubscribableType { TypeId = 1, Name = "topic" },
+                new SubscribableType { TypeId = 2, Name = "module" }
+            );
         }
 
         public override int SaveChanges()
         {
-            UpdateTimestamps();
+            SetTimestamps();
             return base.SaveChanges();
         }
 
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            UpdateTimestamps();
+            SetTimestamps();
             return await base.SaveChangesAsync(cancellationToken);
         }
 
-        private void UpdateTimestamps()
+        private void SetTimestamps()
         {
             var entries = ChangeTracker.Entries()
-                .Where(e => e.Entity is User || e.Entity is Topic || e.Entity is Comment || e.Entity is Tutor)
-                .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
+                .Where(e => e.State == EntityState.Added);
 
             foreach (var entry in entries)
             {
-                if (entry.State == EntityState.Added)
+                // Set TimeCreated for new entities (only if the property exists)
+                try
                 {
-                    if (entry.Property("CreatedAt") != null)
-                        entry.Property("CreatedAt").CurrentValue = DateTime.UtcNow;
+                    var timeCreatedProperty = entry.Property("TimeCreated");
+                    if (timeCreatedProperty != null)
+                    {
+                        timeCreatedProperty.CurrentValue = DateTime.UtcNow;
+                    }
                 }
-
-                if (entry.Property("UpdatedAt") != null)
-                    entry.Property("UpdatedAt").CurrentValue = DateTime.UtcNow;
+                catch (InvalidOperationException)
+                {
+                    // Property doesn't exist on this entity (e.g., UserModule), skip it
+                }
             }
         }
     }

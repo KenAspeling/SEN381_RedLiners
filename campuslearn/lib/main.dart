@@ -5,21 +5,30 @@ import 'package:campuslearn/pages/home_page.dart';
 import 'package:campuslearn/pages/create_page.dart';
 import 'package:campuslearn/pages/message_page.dart';
 import 'package:campuslearn/pages/notification_page.dart';
+import 'package:campuslearn/pages/notifications_page.dart';
+import 'package:campuslearn/services/notification_service.dart';
+import 'package:campuslearn/services/firebase_service.dart';
+import 'dart:async';
 import 'package:campuslearn/pages/query_page.dart';
 import 'package:campuslearn/pages/profile_page.dart';
 import 'package:campuslearn/pages/settings_page.dart';
 import 'package:campuslearn/pages/help_page.dart';
 import 'package:campuslearn/pages/about_page.dart';
 import 'package:campuslearn/pages/login_page.dart';
+import 'package:campuslearn/pages/chatbot_page.dart';
 import 'package:campuslearn/widgets/app_drawer.dart';
 import 'package:campuslearn/widgets/left_sidebar.dart';
-import 'package:campuslearn/widgets/right_sidebar.dart';
 import 'package:campuslearn/widgets/search_delegate.dart';
 import 'package:campuslearn/services/auth_service.dart';
 import 'package:campuslearn/providers/theme_provider.dart';
 import 'package:campuslearn/theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  await FirebaseService.initialize();
+
   runApp(const MyApp());
 }
 
@@ -43,7 +52,7 @@ class MyApp extends StatelessWidget {
           }
           
           return MaterialApp(
-            title: 'Campus Learn',
+      title: 'Campus Learn', 
             theme: AppTheme.generateTheme(themeProvider),
             home: const AuthWrapper(),
           );
@@ -167,7 +176,6 @@ class _MainScreenState extends State<MainScreen> {
     HomePage(),
     CreatePage(),
     MessagePage(),
-    NotificationPage(),
     QueryPage(),
   ];
 
@@ -226,10 +234,23 @@ class _MainScreenState extends State<MainScreen> {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         final isDesktop = _isDesktop(context);
-        
+
         if (isDesktop) {
           // Desktop layout with sidebars
           return Scaffold(
+            floatingActionButton: FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ChatbotPage()),
+                );
+              },
+              backgroundColor: context.appColors.primary,
+              child: const Icon(
+                Icons.smart_toy,
+                color: Colors.white,
+              ),
+            ),
             appBar: AppBar(
               title: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -265,6 +286,7 @@ class _MainScreenState extends State<MainScreen> {
                     );
                   },
                 ),
+                const NotificationBellButton(),
                 IconButton(
                   icon: const Icon(Icons.person),
                   onPressed: () {
@@ -290,14 +312,26 @@ class _MainScreenState extends State<MainScreen> {
                     child: _pages.elementAt(_selectedIndex),
                   ),
                 ),
-                // Right sidebar
-                const RightSidebar(),
               ],
             ),
           );
         } else {
           // Mobile/tablet layout with bottom navigation
           return Scaffold(
+            floatingActionButton: FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ChatbotPage()),
+                );
+              },
+              backgroundColor: context.appColors.primary,
+              child: const Icon(
+                Icons.smart_toy,
+                color: Colors.white,
+              ),
+            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
             drawer: const AppDrawer(),
             appBar: AppBar(
               title: Row(
@@ -333,6 +367,7 @@ class _MainScreenState extends State<MainScreen> {
                     );
                   },
                 ),
+                const NotificationBellButton(),
                 IconButton(
                   icon: const Icon(Icons.person),
                   onPressed: () {
@@ -358,10 +393,9 @@ class _MainScreenState extends State<MainScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _buildNavItem(context, 0, Icons.home, 'Home'),
-                      _buildNavItem(context, 4, Icons.live_help, 'Tickets'),
+                      _buildNavItem(context, 3, Icons.live_help, 'Tickets'),
                       _buildNavItem(context, 1, Icons.add_box, 'Create'),
                       _buildNavItem(context, 2, Icons.message, 'Messages'),
-                      _buildNavItem(context, 3, Icons.notifications, 'Updates'),
                     ],
                   ),
                 ),
@@ -370,6 +404,100 @@ class _MainScreenState extends State<MainScreen> {
           );
         }
       },
+    );
+  }
+}
+
+// Notification bell button with unread count badge
+class NotificationBellButton extends StatefulWidget {
+  const NotificationBellButton({super.key});
+
+  @override
+  State<NotificationBellButton> createState() => _NotificationBellButtonState();
+}
+
+class _NotificationBellButtonState extends State<NotificationBellButton> {
+  int _unreadCount = 0;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadCount();
+
+    // Refresh unread count every 30 seconds
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _loadUnreadCount();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final count = await NotificationService.getUnreadCount();
+      if (mounted) {
+        setState(() {
+          _unreadCount = count;
+        });
+      }
+    } catch (e) {
+      // Silently fail - don't show error for background refresh
+      print('Error loading unread count: $e');
+    }
+  }
+
+  void _navigateToNotifications() async {
+    // Navigate to notifications page
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NotificationsPage()),
+    );
+
+    // Refresh count after returning from notifications page
+    _loadUnreadCount();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications),
+          onPressed: _navigateToNotifications,
+        ),
+        if (_unreadCount > 0)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 18,
+                minHeight: 18,
+              ),
+              child: Center(
+                child: Text(
+                  _unreadCount > 99 ? '99+' : _unreadCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

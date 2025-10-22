@@ -3,6 +3,8 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // Google services plugin commented out until firebase_messaging is enabled
+    // id("com.google.gms.google-services")
 }
 
 android {
@@ -13,6 +15,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -42,3 +45,15 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Core library desugaring for flutter_local_notifications
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+}
+
+// Firebase dependencies commented out until firebase_messaging is enabled in pubspec.yaml
+// dependencies {
+//     implementation(platform("com.google.firebase:firebase-bom:34.4.0"))
+//     implementation("com.google.firebase:firebase-messaging-ktx")
+//     implementation("com.google.firebase:firebase-analytics-ktx")
+// }

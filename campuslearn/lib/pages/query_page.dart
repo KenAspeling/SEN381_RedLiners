@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:campuslearn/theme/theme_extensions.dart';
 import 'package:campuslearn/services/auth_service.dart';
 import 'package:campuslearn/services/ticket_service.dart';
+import 'package:campuslearn/services/module_service.dart';
 import 'package:campuslearn/models/ticket.dart';
+import 'package:campuslearn/widgets/create_ticket_dialog.dart';
+import 'package:campuslearn/widgets/ticket_detail_dialog.dart';
 
 class QueryPage extends StatefulWidget {
   const QueryPage({super.key});
@@ -11,10 +14,11 @@ class QueryPage extends StatefulWidget {
   State<QueryPage> createState() => _QueryPageState();
 }
 
-class _QueryPageState extends State<QueryPage> {
+class _QueryPageState extends State<QueryPage> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   bool _isCurrentUserTutor = false;
   List<Ticket> _tickets = [];
+  int _selectedTutorTab = 0; // 0 = Available, 1 = My Assigned
 
   @override
   void initState() {
@@ -50,8 +54,16 @@ class _QueryPageState extends State<QueryPage> {
 
       List<Ticket> tickets;
       if (_isCurrentUserTutor) {
-        // Tutors see all open tickets they can help with
-        tickets = await TicketService.getOpenTickets();
+        if (_selectedTutorTab == 0) {
+          // Tab 0: Available tickets in tutor's assigned modules
+          final tutorModules = await ModuleService.getUserModules();
+          final moduleIds = tutorModules.map((module) => module.moduleId).toList();
+          tickets = await TicketService.getOpenTicketsByModules(moduleIds);
+        } else {
+          // Tab 1: Tickets assigned to this tutor
+          final tutorId = await AuthService.getUserId() ?? '';
+          tickets = await TicketService.getTicketsByTutor(tutorId);
+        }
       } else {
         // Students see their own tickets
         final userId = await AuthService.getUserId() ?? '';
@@ -73,10 +85,21 @@ class _QueryPageState extends State<QueryPage> {
       }
 
       if (mounted) {
+        // Check if it's an authentication error
+        String errorMessage = 'Failed to load tickets';
+        if (e.toString().contains('401')) {
+          errorMessage = 'Please log in to view tickets';
+        } else if (e.toString().contains('403')) {
+          errorMessage = 'You do not have permission to view these tickets';
+        } else {
+          errorMessage = 'Failed to load tickets: ${e.toString()}';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load tickets: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: context.appColors.error,
+            duration: Duration(seconds: 4),
           ),
         );
       }
@@ -85,6 +108,33 @@ class _QueryPageState extends State<QueryPage> {
 
   Future<void> _refreshTickets() async {
     await _loadTickets();
+  }
+
+  Future<void> _showCreateTicketDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => CreateTicketDialog(),
+    );
+
+    // Refresh tickets list if ticket was created successfully
+    if (result == true) {
+      await _refreshTickets();
+    }
+  }
+
+  Future<void> _showTicketDetailDialog(Ticket ticket) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => TicketDetailDialog(
+        ticket: ticket,
+        isTutor: _isCurrentUserTutor,
+      ),
+    );
+
+    // Refresh tickets list if ticket was claimed
+    if (result == true) {
+      await _refreshTickets();
+    }
   }
 
   Widget _buildStudentView() {
@@ -125,9 +175,7 @@ class _QueryPageState extends State<QueryPage> {
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Navigate to create ticket form
-                },
+                onPressed: _showCreateTicketDialog,
                 icon: Icon(Icons.add),
                 label: Text('Ask for Help'),
                 style: ElevatedButton.styleFrom(
@@ -153,9 +201,7 @@ class _QueryPageState extends State<QueryPage> {
                       title: 'No help requests yet',
                       message: 'When you need academic help, create a ticket and our tutors will assist you!',
                       actionText: 'Ask Your First Question',
-                      onAction: () {
-                        // TODO: Navigate to create ticket form
-                      },
+                      onAction: _showCreateTicketDialog,
                     )
                   : RefreshIndicator(
                       onRefresh: _refreshTickets,
@@ -189,7 +235,7 @@ class _QueryPageState extends State<QueryPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Help Queue',
+                _selectedTutorTab == 0 ? 'Help Queue' : 'My Assigned Tickets',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -198,7 +244,9 @@ class _QueryPageState extends State<QueryPage> {
               ),
               SizedBox(height: 4),
               Text(
-                'Students waiting for help: ${_tickets.length}',
+                _selectedTutorTab == 0
+                    ? 'Students waiting for help: ${_tickets.length}'
+                    : 'Tickets you are helping with: ${_tickets.length}',
                 style: TextStyle(
                   fontSize: 14,
                   color: context.appColors.textSecondary,
@@ -208,22 +256,44 @@ class _QueryPageState extends State<QueryPage> {
           ),
         ),
 
-        // Filter tabs (TODO: Add filtering functionality)
+        // Tab buttons
         Container(
-          height: 50,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: context.appColors.surface,
+            border: Border(
+              bottom: BorderSide(color: context.appColors.border, width: 1),
+            ),
+          ),
+          child: Row(
             children: [
-              _buildFilterChip('All', true),
-              SizedBox(width: 8),
-              _buildFilterChip('Urgent', false),
-              SizedBox(width: 8),
-              _buildFilterChip('Mathematics', false),
-              SizedBox(width: 8),
-              _buildFilterChip('Computer Science', false),
-              SizedBox(width: 8),
-              _buildFilterChip('Physics', false),
+              Expanded(
+                child: _buildTabButton(
+                  label: 'Available',
+                  icon: Icons.queue,
+                  isSelected: _selectedTutorTab == 0,
+                  onTap: () {
+                    setState(() {
+                      _selectedTutorTab = 0;
+                    });
+                    _loadTickets();
+                  },
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: _buildTabButton(
+                  label: 'My Assigned',
+                  icon: Icons.assignment_ind,
+                  isSelected: _selectedTutorTab == 1,
+                  onTap: () {
+                    setState(() {
+                      _selectedTutorTab = 1;
+                    });
+                    _loadTickets();
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -238,9 +308,15 @@ class _QueryPageState extends State<QueryPage> {
                 )
               : _tickets.isEmpty
                   ? _buildEmptyState(
-                      icon: Icons.check_circle_outline,
-                      title: 'All caught up!',
-                      message: 'There are no students waiting for help at the moment.',
+                      icon: _selectedTutorTab == 0
+                          ? Icons.check_circle_outline
+                          : Icons.assignment_outlined,
+                      title: _selectedTutorTab == 0
+                          ? 'All caught up!'
+                          : 'No assigned tickets',
+                      message: _selectedTutorTab == 0
+                          ? 'There are no students waiting for help at the moment.'
+                          : 'You haven\'t claimed any tickets yet. Switch to Available tab to help students.',
                       actionText: null,
                       onAction: null,
                     )
@@ -260,15 +336,49 @@ class _QueryPageState extends State<QueryPage> {
     );
   }
 
-  Widget _buildFilterChip(String label, bool isSelected) {
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        // TODO: Implement filtering
-      },
-      selectedColor: context.appColors.primary.withOpacity(0.2),
-      checkmarkColor: context.appColors.primary,
+  Widget _buildTabButton({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? context.appColors.primary
+              : context.appColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? context.appColors.primary
+                : context.appColors.border,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : context.appColors.textSecondary,
+            ),
+            SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : context.appColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -301,9 +411,9 @@ class _QueryPageState extends State<QueryPage> {
             ),
             SizedBox(height: 8),
 
-            // Description
+            // Content
             Text(
-              ticket.description,
+              ticket.content,
               style: TextStyle(
                 fontSize: 14,
                 color: context.appColors.textSecondary,
@@ -316,18 +426,19 @@ class _QueryPageState extends State<QueryPage> {
             // Metadata row
             Row(
               children: [
-                _buildInfoChip(ticket.categoryText, Icons.category),
-                SizedBox(width: 8),
-                _buildInfoChip(ticket.priorityText, Icons.flag),
+                Expanded(
+                  child: _buildInfoChip(ticket.moduleText, Icons.book),
+                ),
                 SizedBox(width: 8),
                 _buildInfoChip(ticket.timeAgo, Icons.access_time),
-                Spacer(),
-                if (ticket.hasResponse)
+                if (ticket.hasResponse) ...[
+                  SizedBox(width: 8),
                   Icon(
                     Icons.chat_bubble,
                     size: 16,
                     color: context.appColors.primary,
                   ),
+                ],
               ],
             ),
 
@@ -395,15 +506,18 @@ class _QueryPageState extends State<QueryPage> {
       margin: EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: ticket.priority == TicketPriority.urgent
+        side: ticket.priorityLevel == 3 // 3 = Urgent
             ? BorderSide(color: Colors.red, width: 2)
             : BorderSide.none,
       ),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: InkWell(
+        onTap: () => _showTicketDetailDialog(ticket),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // Header row
             Row(
               children: [
@@ -417,7 +531,7 @@ class _QueryPageState extends State<QueryPage> {
                     ),
                   ),
                 ),
-                _buildPriorityChip(ticket.priority),
+                _buildPriorityChip(ticket.calculatedPriority),
               ],
             ),
             SizedBox(height: 4),
@@ -456,9 +570,9 @@ class _QueryPageState extends State<QueryPage> {
             ),
             SizedBox(height: 12),
 
-            // Description
+            // Content
             Text(
-              ticket.description,
+              ticket.content,
               style: TextStyle(
                 fontSize: 14,
                 color: context.appColors.textSecondary,
@@ -471,33 +585,34 @@ class _QueryPageState extends State<QueryPage> {
             // Action buttons
             Row(
               children: [
-                _buildInfoChip(ticket.categoryText, Icons.category),
-                Spacer(),
+                Expanded(
+                  child: _buildInfoChip(ticket.moduleText, Icons.book),
+                ),
+                SizedBox(width: 8),
                 TextButton.icon(
-                  onPressed: () {
-                    // TODO: Navigate to ticket detail
-                  },
+                  onPressed: () => _showTicketDetailDialog(ticket),
                   icon: Icon(Icons.visibility, size: 16),
                   label: Text('View'),
                   style: TextButton.styleFrom(
                     foregroundColor: context.appColors.primary,
+                    padding: EdgeInsets.symmetric(horizontal: 8),
                   ),
                 ),
-                SizedBox(width: 8),
+                SizedBox(width: 4),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    // TODO: Claim ticket
-                  },
+                  onPressed: () => _showTicketDetailDialog(ticket),
                   icon: Icon(Icons.assignment_ind, size: 16),
                   label: Text('Help'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.appColors.primary,
                     foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 12),
                   ),
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -543,20 +658,23 @@ class _QueryPageState extends State<QueryPage> {
     );
   }
 
-  Widget _buildPriorityChip(TicketPriority priority) {
+  Widget _buildPriorityChip(String calculatedPriority) {
     Color color;
-    switch (priority) {
-      case TicketPriority.low:
+    switch (calculatedPriority) {
+      case 'Low':
         color = Colors.green;
         break;
-      case TicketPriority.medium:
+      case 'Medium':
         color = Colors.orange;
         break;
-      case TicketPriority.high:
+      case 'High':
         color = Colors.red;
         break;
-      case TicketPriority.urgent:
+      case 'Urgent':
         color = Colors.purple;
+        break;
+      default:
+        color = Colors.blue;
         break;
     }
 
@@ -567,7 +685,7 @@ class _QueryPageState extends State<QueryPage> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        priority.name.toUpperCase(),
+        calculatedPriority.toUpperCase(),
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.bold,
@@ -593,11 +711,15 @@ class _QueryPageState extends State<QueryPage> {
             color: context.appColors.textLight,
           ),
           SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 11,
-              color: context.appColors.textLight,
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                color: context.appColors.textLight,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
         ],

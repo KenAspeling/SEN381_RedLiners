@@ -1,217 +1,320 @@
-import 'dart:math' as math;
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:campuslearn/services/api_config.dart';
+import 'package:campuslearn/services/auth_service.dart';
 import 'package:campuslearn/models/ticket.dart';
+import 'package:file_picker/file_picker.dart';
 
 class TicketService {
-  // Global mock data storage - simulates database
-  static List<Ticket> _mockTickets = [
-    Ticket(
-      id: 1,
-      title: 'Help with Calculus Integration',
-      description: 'I\'m struggling with integration by parts. Can someone explain the step-by-step process for solving ∫x*e^x dx?',
-      category: TicketCategory.mathematics,
-      priority: TicketPriority.medium,
-      status: TicketStatus.answered,
-      studentId: '12345',
-      studentEmail: 'user@campus.edu',
-      studentName: 'Student User',
-      tutorId: 'tutor123',
-      tutorEmail: 'tutor@campus.edu',
-      tutorName: 'Tutor',
-      response: 'For integration by parts, use the formula ∫u dv = uv - ∫v du. \n\nFor ∫x*e^x dx:\n1. Let u = x, then du = dx\n2. Let dv = e^x dx, then v = e^x\n3. Apply formula: x*e^x - ∫e^x dx\n4. Final answer: x*e^x - e^x + C = e^x(x-1) + C',
-      createdAt: DateTime.now().subtract(Duration(days: 2)),
-      updatedAt: DateTime.now().subtract(Duration(hours: 6)),
-      respondedAt: DateTime.now().subtract(Duration(hours: 6)),
-      rating: 5,
-    ),
-    Ticket(
-      id: 2,
-      title: 'Python List Comprehension Help',
-      description: 'How do I create a list of squares for even numbers from 1 to 20 using list comprehension?',
-      category: TicketCategory.computerScience,
-      priority: TicketPriority.low,
-      status: TicketStatus.inProgress,
-      studentId: '12345',
-      studentEmail: 'user@campus.edu',
-      studentName: 'Student User',
-      tutorId: 'tutor123',
-      tutorEmail: 'tutor@campus.edu',
-      tutorName: 'Tutor',
-      createdAt: DateTime.now().subtract(Duration(hours: 8)),
-      updatedAt: DateTime.now().subtract(Duration(hours: 2)),
-    ),
-    Ticket(
-      id: 3,
-      title: 'Physics - Projectile Motion',
-      description: 'Can someone help me understand how to calculate the maximum height and range of a projectile launched at 45 degrees?',
-      category: TicketCategory.physics,
-      priority: TicketPriority.high,
-      status: TicketStatus.open,
-      studentId: '67890',
-      studentEmail: 'alex@campus.edu',
-      studentName: 'Alex Chen',
-      createdAt: DateTime.now().subtract(Duration(hours: 3)),
-      updatedAt: DateTime.now().subtract(Duration(hours: 3)),
-    ),
-    Ticket(
-      id: 4,
-      title: 'Essay Writing Structure',
-      description: 'I need help structuring my argumentative essay. What\'s the best way to organize my thesis and supporting arguments?',
-      category: TicketCategory.writing,
-      priority: TicketPriority.medium,
-      status: TicketStatus.open,
-      studentId: '54321',
-      studentEmail: 'sarah@campus.edu',
-      studentName: 'Sarah Johnson',
-      createdAt: DateTime.now().subtract(Duration(minutes: 45)),
-      updatedAt: DateTime.now().subtract(Duration(minutes: 45)),
-    ),
-  ];
+  /// Get a single ticket by ID
+  static Future<Ticket?> getTicketById(int ticketId) async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/$ticketId'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
 
-  static int _nextId = 5;
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        return Ticket.fromJson(json);
+      } else if (response.statusCode == 404) {
+        return null;
+      } else {
+        throw Exception('Failed to load ticket: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching ticket by ID: $e');
+      return null;
+    }
+  }
 
-  /// Get all tickets for admin/tutor view
+  /// Get all tickets (filtered by backend based on user role)
   static Future<List<Ticket>> getAllTickets() async {
-    await Future.delayed(Duration(milliseconds: 500));
-    // Sort by priority (urgent first) then by creation date (newest first)
-    final sortedTickets = List<Ticket>.from(_mockTickets);
-    sortedTickets.sort((a, b) {
-      // First sort by priority (urgent = 3, high = 2, medium = 1, low = 0)
-      final aPriorityValue = a.priority == TicketPriority.urgent ? 3 :
-                            a.priority == TicketPriority.high ? 2 :
-                            a.priority == TicketPriority.medium ? 1 : 0;
-      final bPriorityValue = b.priority == TicketPriority.urgent ? 3 :
-                            b.priority == TicketPriority.high ? 2 :
-                            b.priority == TicketPriority.medium ? 1 : 0;
-      
-      final priorityComparison = bPriorityValue.compareTo(aPriorityValue);
-      if (priorityComparison != 0) return priorityComparison;
-      
-      // Then sort by creation date (newest first)
-      return b.createdAt.compareTo(a.createdAt);
-    });
-    
-    return sortedTickets;
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        final tickets = jsonList.map((json) => Ticket.fromJson(json)).toList();
+
+        // Sort by calculated priority (based on age) then by creation date (oldest first)
+        tickets.sort((a, b) {
+          final priorityComparison = b.priorityLevel.compareTo(a.priorityLevel);
+          if (priorityComparison != 0) return priorityComparison;
+          return a.createdAt.compareTo(b.createdAt);
+        });
+
+        return tickets;
+      } else {
+        throw Exception('Failed to load tickets: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching tickets: $e');
+      throw Exception('Failed to load tickets: $e');
+    }
   }
 
   /// Get tickets by student
   static Future<List<Ticket>> getTicketsByStudent(String studentId) async {
-    await Future.delayed(Duration(milliseconds: 300));
-    final studentTickets = _mockTickets.where((ticket) => ticket.studentId == studentId).toList();
-    studentTickets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return studentTickets;
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/student/$studentId'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        final tickets = jsonList.map((json) => Ticket.fromJson(json)).toList();
+        tickets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return tickets;
+      } else {
+        throw Exception('Failed to load student tickets: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching student tickets: $e');
+      throw Exception('Failed to load student tickets: $e');
+    }
   }
 
   /// Get open tickets available for tutors to claim
   static Future<List<Ticket>> getOpenTickets() async {
-    await Future.delayed(Duration(milliseconds: 400));
-    final openTickets = _mockTickets.where((ticket) => 
-      ticket.status == TicketStatus.open || ticket.status == TicketStatus.escalated
-    ).toList();
-    
-    // Sort by priority and creation date
-    openTickets.sort((a, b) {
-      final aPriorityValue = a.priority == TicketPriority.urgent ? 3 :
-                            a.priority == TicketPriority.high ? 2 :
-                            a.priority == TicketPriority.medium ? 1 : 0;
-      final bPriorityValue = b.priority == TicketPriority.urgent ? 3 :
-                            b.priority == TicketPriority.high ? 2 :
-                            b.priority == TicketPriority.medium ? 1 : 0;
-      
-      final priorityComparison = bPriorityValue.compareTo(aPriorityValue);
-      if (priorityComparison != 0) return priorityComparison;
-      
-      return a.createdAt.compareTo(b.createdAt); // Oldest first for fairness
-    });
-    
-    return openTickets;
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/open'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        final tickets = jsonList.map((json) => Ticket.fromJson(json)).toList();
+
+        // Sort by calculated priority (based on age) and creation date
+        tickets.sort((a, b) {
+          final priorityComparison = b.priorityLevel.compareTo(a.priorityLevel);
+          if (priorityComparison != 0) return priorityComparison;
+          return a.createdAt.compareTo(b.createdAt);
+        });
+
+        return tickets;
+      } else {
+        throw Exception('Failed to load open tickets: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching open tickets: $e');
+      throw Exception('Failed to load open tickets: $e');
+    }
+  }
+
+  /// Get open tickets filtered by tutor's assigned modules
+  static Future<List<Ticket>> getOpenTicketsByModules(List<int> moduleIds) async {
+    if (moduleIds.isEmpty) return [];
+
+    try {
+      final token = await AuthService.getToken();
+      final moduleIdsParam = moduleIds.join(',');
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/open?moduleIds=$moduleIdsParam'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        final tickets = jsonList.map((json) => Ticket.fromJson(json)).toList();
+
+        // Sort by calculated priority (based on age) and creation date
+        tickets.sort((a, b) {
+          final priorityComparison = b.priorityLevel.compareTo(a.priorityLevel);
+          if (priorityComparison != 0) return priorityComparison;
+          return a.createdAt.compareTo(b.createdAt);
+        });
+
+        return tickets;
+      } else {
+        throw Exception('Failed to load module tickets: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching module tickets: $e');
+      throw Exception('Failed to load module tickets: $e');
+    }
   }
 
   /// Get tickets assigned to a specific tutor
   static Future<List<Ticket>> getTicketsByTutor(String tutorId) async {
-    await Future.delayed(Duration(milliseconds: 300));
-    final tutorTickets = _mockTickets.where((ticket) => ticket.tutorId == tutorId).toList();
-    tutorTickets.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return tutorTickets;
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/tutor/$tutorId'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        final tickets = jsonList.map((json) => Ticket.fromJson(json)).toList();
+        tickets.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        return tickets;
+      } else {
+        throw Exception('Failed to load tutor tickets: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching tutor tickets: $e');
+      throw Exception('Failed to load tutor tickets: $e');
+    }
   }
 
-  /// Get tickets by category
-  static Future<List<Ticket>> getTicketsByCategory(TicketCategory category) async {
-    await Future.delayed(Duration(milliseconds: 300));
-    final categoryTickets = _mockTickets.where((ticket) => ticket.category == category).toList();
-    categoryTickets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return categoryTickets;
+  /// Get tickets by module
+  static Future<List<Ticket>> getTicketsByModule(int moduleId) async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/open?moduleIds=$moduleId'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        final tickets = jsonList.map((json) => Ticket.fromJson(json)).toList();
+        tickets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return tickets;
+      } else {
+        throw Exception('Failed to load module tickets: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching module tickets: $e');
+      throw Exception('Failed to load module tickets: $e');
+    }
   }
 
   /// Get tickets by status
   static Future<List<Ticket>> getTicketsByStatus(TicketStatus status) async {
-    await Future.delayed(Duration(milliseconds: 300));
-    final statusTickets = _mockTickets.where((ticket) => ticket.status == status).toList();
-    statusTickets.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return statusTickets;
+    try {
+      // For now, just get all tickets and filter client-side
+      final tickets = await getAllTickets();
+      final filtered = tickets.where((ticket) => ticket.status == status).toList();
+      filtered.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      return filtered;
+    } catch (e) {
+      print('Error fetching tickets by status: $e');
+      throw Exception('Failed to load tickets by status: $e');
+    }
   }
 
   /// Create a new ticket (student submits help request)
+  /// Priority is automatically calculated based on ticket age
   static Future<Ticket> createTicket({
     required String title,
-    required String description,
-    required TicketCategory category,
-    required TicketPriority priority,
+    required String content,
+    required int moduleId,
+    required String moduleName,
     required String studentId,
     required String studentEmail,
     required String studentName,
+    String? attachmentUrl,
+    String? attachmentName,
+    PlatformFile? file,
   }) async {
-    await Future.delayed(Duration(milliseconds: 800));
+    try {
+      if (title.trim().isEmpty) {
+        throw Exception('Ticket title cannot be empty');
+      }
 
-    if (title.trim().isEmpty) {
-      throw Exception('Ticket title cannot be empty');
+      if (content.trim().isEmpty) {
+        throw Exception('Ticket content cannot be empty');
+      }
+
+      final token = await AuthService.getToken();
+
+      // If there's a file, use the withfile endpoint with multipart/form-data
+      if (file != null && file.path != null) {
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('${ApiConfig.baseUrl}/api/querytickets/withfile'),
+        );
+
+        // Add auth header
+        request.headers.addAll({
+          'Authorization': 'Bearer $token',
+        });
+
+        // Add form fields
+        request.fields['title'] = title.trim();
+        request.fields['content'] = content.trim();
+        request.fields['moduleId'] = moduleId.toString();
+
+        // Add file
+        final fileBytes = await File(file.path!).readAsBytes();
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          fileBytes,
+          filename: file.name,
+        ));
+
+        print('[TICKET] Uploading file: ${file.name} (${file.size} bytes)');
+
+        final streamedResponse = await request.send().timeout(ApiConfig.requestTimeout);
+        final response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          final jsonResponse = json.decode(response.body);
+          print('[TICKET] Ticket created successfully with file');
+          return Ticket.fromJson(jsonResponse);
+        } else {
+          throw Exception('Failed to create ticket with file: ${response.statusCode} ${response.body}');
+        }
+      } else {
+        // No file, use the regular JSON endpoint
+        final requestBody = {
+          'title': title.trim(),
+          'content': content.trim(),
+          'moduleId': moduleId,
+          'materialId': null,
+        };
+
+        final response = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/api/querytickets'),
+          headers: ApiConfig.getAuthHeaders(token),
+          body: json.encode(requestBody),
+        ).timeout(ApiConfig.requestTimeout);
+
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          final jsonResponse = json.decode(response.body);
+          return Ticket.fromJson(jsonResponse);
+        } else {
+          throw Exception('Failed to create ticket: ${response.statusCode} ${response.body}');
+        }
+      }
+    } catch (e) {
+      print('Error creating ticket: $e');
+      throw Exception('Failed to create ticket: $e');
     }
-
-    if (description.trim().isEmpty) {
-      throw Exception('Ticket description cannot be empty');
-    }
-
-    final newTicket = Ticket(
-      id: _nextId++,
-      title: title.trim(),
-      description: description.trim(),
-      category: category,
-      priority: priority,
-      status: TicketStatus.open,
-      studentId: studentId,
-      studentEmail: studentEmail,
-      studentName: studentName,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-
-    _mockTickets.add(newTicket);
-    return newTicket;
   }
 
   /// Claim a ticket (tutor takes ownership)
   static Future<Ticket> claimTicket(int ticketId, String tutorId, String tutorEmail, String tutorName) async {
-    await Future.delayed(Duration(milliseconds: 400));
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/$ticketId/claim'),
+        headers: ApiConfig.getAuthHeaders(token),
+      ).timeout(ApiConfig.requestTimeout);
 
-    final ticketIndex = _mockTickets.indexWhere((ticket) => ticket.id == ticketId);
-    if (ticketIndex == -1) {
-      throw Exception('Ticket not found');
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        return Ticket.fromJson(jsonResponse);
+      } else {
+        throw Exception('Failed to claim ticket: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      print('Error claiming ticket: $e');
+      throw Exception('Failed to claim ticket: $e');
     }
-
-    final ticket = _mockTickets[ticketIndex];
-    if (ticket.status != TicketStatus.open && ticket.status != TicketStatus.escalated) {
-      throw Exception('Ticket is not available to claim');
-    }
-
-    final updatedTicket = ticket.copyWith(
-      status: TicketStatus.inProgress,
-      tutorId: tutorId,
-      tutorEmail: tutorEmail,
-      tutorName: tutorName,
-      updatedAt: DateTime.now(),
-    );
-
-    _mockTickets[ticketIndex] = updatedTicket;
-    return updatedTicket;
   }
 
   /// Respond to a ticket (tutor provides solution)
@@ -220,177 +323,124 @@ class TicketService {
     required String tutorId,
     required String response,
   }) async {
-    await Future.delayed(Duration(milliseconds: 600));
+    try {
+      if (response.trim().isEmpty) {
+        throw Exception('Response cannot be empty');
+      }
 
-    final ticketIndex = _mockTickets.indexWhere((ticket) => ticket.id == ticketId);
-    if (ticketIndex == -1) {
-      throw Exception('Ticket not found');
+      final token = await AuthService.getToken();
+      final requestBody = {
+        'ticketId': ticketId,
+        'content': response.trim(),
+        'materialId': null,
+      };
+
+      final httpResponse = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/querytickets/$ticketId/respond'),
+        headers: ApiConfig.getAuthHeaders(token),
+        body: json.encode(requestBody),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (httpResponse.statusCode == 200) {
+        final jsonResponse = json.decode(httpResponse.body);
+        return Ticket.fromJson(jsonResponse);
+      } else {
+        throw Exception('Failed to respond to ticket: ${httpResponse.statusCode} ${httpResponse.body}');
+      }
+    } catch (e) {
+      print('Error responding to ticket: $e');
+      throw Exception('Failed to respond to ticket: $e');
     }
-
-    final ticket = _mockTickets[ticketIndex];
-    if (ticket.tutorId != tutorId) {
-      throw Exception('You can only respond to tickets assigned to you');
-    }
-
-    if (response.trim().isEmpty) {
-      throw Exception('Response cannot be empty');
-    }
-
-    final now = DateTime.now();
-    final updatedTicket = ticket.copyWith(
-      status: TicketStatus.answered,
-      response: response.trim(),
-      updatedAt: now,
-      respondedAt: now,
-    );
-
-    _mockTickets[ticketIndex] = updatedTicket;
-    return updatedTicket;
   }
 
   /// Close a ticket (student marks as resolved)
+  /// Note: Not implemented in backend yet, keeping for future
   static Future<Ticket> closeTicket(int ticketId, String studentId, {int? rating}) async {
-    await Future.delayed(Duration(milliseconds: 400));
-
-    final ticketIndex = _mockTickets.indexWhere((ticket) => ticket.id == ticketId);
-    if (ticketIndex == -1) {
-      throw Exception('Ticket not found');
-    }
-
-    final ticket = _mockTickets[ticketIndex];
-    if (ticket.studentId != studentId) {
-      throw Exception('You can only close your own tickets');
-    }
-
-    if (ticket.status == TicketStatus.closed) {
-      throw Exception('Ticket is already closed');
-    }
-
-    final now = DateTime.now();
-    final updatedTicket = ticket.copyWith(
-      status: TicketStatus.closed,
-      rating: rating,
-      updatedAt: now,
-      closedAt: now,
-    );
-
-    _mockTickets[ticketIndex] = updatedTicket;
-    return updatedTicket;
+    throw UnimplementedError('Close ticket not implemented in backend yet');
   }
 
   /// Escalate a ticket (tutor marks as needing senior help)
+  /// Note: Not implemented in backend yet, keeping for future
   static Future<Ticket> escalateTicket(int ticketId, String tutorId) async {
-    await Future.delayed(Duration(milliseconds: 400));
-
-    final ticketIndex = _mockTickets.indexWhere((ticket) => ticket.id == ticketId);
-    if (ticketIndex == -1) {
-      throw Exception('Ticket not found');
-    }
-
-    final ticket = _mockTickets[ticketIndex];
-    if (ticket.tutorId != tutorId) {
-      throw Exception('You can only escalate tickets assigned to you');
-    }
-
-    final updatedTicket = ticket.copyWith(
-      status: TicketStatus.escalated,
-      updatedAt: DateTime.now(),
-    );
-
-    _mockTickets[ticketIndex] = updatedTicket;
-    return updatedTicket;
+    throw UnimplementedError('Escalate ticket not implemented in backend yet');
   }
 
   /// Reopen a ticket (if student needs more help)
+  /// Note: Not implemented in backend yet, keeping for future
   static Future<Ticket> reopenTicket(int ticketId, String studentId) async {
-    await Future.delayed(Duration(milliseconds: 400));
-
-    final ticketIndex = _mockTickets.indexWhere((ticket) => ticket.id == ticketId);
-    if (ticketIndex == -1) {
-      throw Exception('Ticket not found');
-    }
-
-    final ticket = _mockTickets[ticketIndex];
-    if (ticket.studentId != studentId) {
-      throw Exception('You can only reopen your own tickets');
-    }
-
-    if (ticket.status != TicketStatus.closed && ticket.status != TicketStatus.answered) {
-      throw Exception('Only closed or answered tickets can be reopened');
-    }
-
-    final updatedTicket = ticket.copyWith(
-      status: TicketStatus.open,
-      tutorId: null,
-      tutorEmail: null,
-      tutorName: null,
-      updatedAt: DateTime.now(),
-    );
-
-    _mockTickets[ticketIndex] = updatedTicket;
-    return updatedTicket;
+    throw UnimplementedError('Reopen ticket not implemented in backend yet');
   }
 
   /// Delete a ticket (admin/tutor privilege)
+  /// Note: Not implemented in backend yet, keeping for future
   static Future<void> deleteTicket(int ticketId, String tutorId) async {
-    await Future.delayed(Duration(milliseconds: 300));
-
-    final ticketIndex = _mockTickets.indexWhere((ticket) => ticket.id == ticketId);
-    if (ticketIndex == -1) {
-      throw Exception('Ticket not found');
-    }
-
-    _mockTickets.removeAt(ticketIndex);
+    throw UnimplementedError('Delete ticket not implemented in backend yet');
   }
 
   /// Get ticket statistics for dashboard
   static Future<Map<String, int>> getTicketStatistics() async {
-    await Future.delayed(Duration(milliseconds: 200));
+    try {
+      final tickets = await getAllTickets();
 
-    final stats = <String, int>{
-      'total': _mockTickets.length,
-      'open': _mockTickets.where((t) => t.status == TicketStatus.open).length,
-      'inProgress': _mockTickets.where((t) => t.status == TicketStatus.inProgress).length,
-      'answered': _mockTickets.where((t) => t.status == TicketStatus.answered).length,
-      'closed': _mockTickets.where((t) => t.status == TicketStatus.closed).length,
-      'escalated': _mockTickets.where((t) => t.status == TicketStatus.escalated).length,
-      'urgent': _mockTickets.where((t) => t.priority == TicketPriority.urgent).length,
-      'high': _mockTickets.where((t) => t.priority == TicketPriority.high).length,
-      'avgRating': _calculateAverageRating(),
-    };
+      final stats = <String, int>{
+        'total': tickets.length,
+        'open': tickets.where((t) => t.status == TicketStatus.open).length,
+        'inProgress': tickets.where((t) => t.status == TicketStatus.inProgress).length,
+        'answered': tickets.where((t) => t.status == TicketStatus.answered).length,
+        'closed': tickets.where((t) => t.status == TicketStatus.closed).length,
+        'escalated': tickets.where((t) => t.status == TicketStatus.escalated).length,
+        'urgent': tickets.where((t) => t.priorityLevel == 3).length,
+        'high': tickets.where((t) => t.priorityLevel == 2).length,
+        'avgRating': _calculateAverageRating(tickets),
+      };
 
-    return stats;
+      return stats;
+    } catch (e) {
+      print('Error fetching ticket statistics: $e');
+      return {
+        'total': 0,
+        'open': 0,
+        'inProgress': 0,
+        'answered': 0,
+        'closed': 0,
+        'escalated': 0,
+        'urgent': 0,
+        'high': 0,
+        'avgRating': 0,
+      };
+    }
   }
 
-  static int _calculateAverageRating() {
-    final ratedTickets = _mockTickets.where((t) => t.rating != null).toList();
+  static int _calculateAverageRating(List<Ticket> tickets) {
+    final ratedTickets = tickets.where((t) => t.rating != null).toList();
     if (ratedTickets.isEmpty) return 0;
-    
+
     final sum = ratedTickets.fold(0, (total, ticket) => total + ticket.rating!);
     return (sum / ratedTickets.length).round();
   }
 
-  /// Search tickets by title or description
+  /// Search tickets by title or content
   static Future<List<Ticket>> searchTickets(String query, {String? studentId}) async {
-    await Future.delayed(Duration(milliseconds: 300));
+    try {
+      if (query.trim().isEmpty) return [];
 
-    if (query.trim().isEmpty) return [];
+      final tickets = studentId != null
+          ? await getTicketsByStudent(studentId)
+          : await getAllTickets();
 
-    final searchQuery = query.toLowerCase().trim();
-    var results = _mockTickets.where((ticket) {
-      final titleMatch = ticket.title.toLowerCase().contains(searchQuery);
-      final descriptionMatch = ticket.description.toLowerCase().contains(searchQuery);
-      final categoryMatch = ticket.categoryText.toLowerCase().contains(searchQuery);
-      
-      return titleMatch || descriptionMatch || categoryMatch;
-    }).toList();
+      final searchQuery = query.toLowerCase().trim();
+      var results = tickets.where((ticket) {
+        final titleMatch = ticket.title.toLowerCase().contains(searchQuery);
+        final contentMatch = ticket.content.toLowerCase().contains(searchQuery);
+        final moduleMatch = ticket.moduleText.toLowerCase().contains(searchQuery);
+        return titleMatch || contentMatch || moduleMatch;
+      }).toList();
 
-    // Filter by student if specified
-    if (studentId != null) {
-      results = results.where((ticket) => ticket.studentId == studentId).toList();
+      results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return results;
+    } catch (e) {
+      print('Error searching tickets: $e');
+      throw Exception('Failed to search tickets: $e');
     }
-
-    results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return results;
   }
 }

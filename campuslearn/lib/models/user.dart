@@ -1,43 +1,65 @@
 class User {
-  final int id;
+  final int userId;
   final String email;
   final String name;
-  final String? profilePicture; // URL to profile image
-  final DateTime createdAt;
-  final DateTime lastActive;
+  final String surname;
+  final String? phoneNumber;
+  final DateTime timeCreated;
+  final int? accessLevel; // 1=student, 2=tutor, 3=admin
+  final String? accessLevelName; // "student", "tutor", "admin"
+  final String? degree;
+  final int? yearOfStudy;
+  final List<int> moduleIds;
+
+  // Frontend-only fields (not from backend)
+  final String? profilePicture;
+  final DateTime? lastActive;
   final bool isActive;
-  final bool isTutor;
   final int postCount;
   final int commentCount;
   final int followerCount;
   final int followingCount;
 
   User({
-    required this.id,
+    required this.userId,
     required this.email,
     required this.name,
+    required this.surname,
+    this.phoneNumber,
+    required this.timeCreated,
+    this.accessLevel = 1,
+    this.accessLevelName,
+    this.degree,
+    this.yearOfStudy,
+    this.moduleIds = const [],
     this.profilePicture,
-    required this.createdAt,
-    required this.lastActive,
+    DateTime? lastActive,
     this.isActive = true,
-    this.isTutor = false,
     this.postCount = 0,
     this.commentCount = 0,
     this.followerCount = 0,
     this.followingCount = 0,
-  });
+  }) : lastActive = lastActive ?? DateTime.now();
 
   /// Create User from JSON response (from C# backend API)
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as int,
+      userId: json['userId'] as int,
       email: json['email'] as String,
-      name: json['name'] as String,
+      name: json['name'] as String? ?? '',
+      surname: json['surname'] as String? ?? '',
+      phoneNumber: json['phoneNumber'] as String?,
+      timeCreated: DateTime.parse(json['timeCreated'] as String),
+      accessLevel: json['accessLevel'] as int?,
+      accessLevelName: json['accessLevelName'] as String?,
+      degree: json['degree'] as String?,
+      yearOfStudy: json['yearOfStudy'] as int?,
+      moduleIds: (json['moduleIds'] as List<dynamic>?)?.map((e) => e as int).toList() ?? [],
       profilePicture: json['profilePicture'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      lastActive: DateTime.parse(json['lastActive'] as String),
+      lastActive: json['lastActive'] != null
+          ? DateTime.parse(json['lastActive'] as String)
+          : null,
       isActive: json['isActive'] as bool? ?? true,
-      isTutor: json['isTutor'] as bool? ?? false,
       postCount: json['postCount'] as int? ?? 0,
       commentCount: json['commentCount'] as int? ?? 0,
       followerCount: json['followerCount'] as int? ?? 0,
@@ -48,38 +70,55 @@ class User {
   /// Convert User to JSON for API requests
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      'userId': userId,
       'email': email,
       'name': name,
-      'profilePicture': profilePicture,
-      'isTutor': isTutor,
+      'surname': surname,
+      'phoneNumber': phoneNumber,
+      'accessLevel': accessLevel,
+      'accessLevelName': accessLevelName,
+      'degree': degree,
+      'yearOfStudy': yearOfStudy,
+      'moduleIds': moduleIds,
     };
   }
 
   /// Create User with updated data (for state management)
   User copyWith({
-    int? id,
+    int? userId,
     String? email,
     String? name,
+    String? surname,
+    String? phoneNumber,
+    DateTime? timeCreated,
+    int? accessLevel,
+    String? accessLevelName,
+    String? degree,
+    int? yearOfStudy,
+    List<int>? moduleIds,
     String? profilePicture,
-    DateTime? createdAt,
     DateTime? lastActive,
     bool? isActive,
-    bool? isTutor,
     int? postCount,
     int? commentCount,
     int? followerCount,
     int? followingCount,
   }) {
     return User(
-      id: id ?? this.id,
+      userId: userId ?? this.userId,
       email: email ?? this.email,
       name: name ?? this.name,
+      surname: surname ?? this.surname,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      timeCreated: timeCreated ?? this.timeCreated,
+      accessLevel: accessLevel ?? this.accessLevel,
+      accessLevelName: accessLevelName ?? this.accessLevelName,
+      degree: degree ?? this.degree,
+      yearOfStudy: yearOfStudy ?? this.yearOfStudy,
+      moduleIds: moduleIds ?? this.moduleIds,
       profilePicture: profilePicture ?? this.profilePicture,
-      createdAt: createdAt ?? this.createdAt,
       lastActive: lastActive ?? this.lastActive,
       isActive: isActive ?? this.isActive,
-      isTutor: isTutor ?? this.isTutor,
       postCount: postCount ?? this.postCount,
       commentCount: commentCount ?? this.commentCount,
       followerCount: followerCount ?? this.followerCount,
@@ -89,35 +128,50 @@ class User {
 
   // Frontend-specific computed properties for UI
 
-  /// Get display name (falls back to email username if name is empty)
+  /// Get display name (uses full name or email username as fallback)
   String get displayName {
-    if (name.isNotEmpty) return name;
-    return email.split('@')[0]; // Use email username as fallback
+    if (name.isNotEmpty && surname.isNotEmpty) {
+      return '$name $surname';
+    } else if (name.isNotEmpty) {
+      return name;
+    }
+    return email.split('@')[0]; // Fallback to email username
   }
 
-  /// Get user initials for avatar (first letter of each name part)
+  /// Get user initials for avatar
   String get initials {
-    if (name.isEmpty) return email[0].toUpperCase();
-    
-    final nameParts = name.trim().split(' ');
-    if (nameParts.length == 1) {
-      return nameParts[0][0].toUpperCase();
+    if (name.isNotEmpty && surname.isNotEmpty) {
+      return '${name[0]}${surname[0]}'.toUpperCase();
+    } else if (name.isNotEmpty) {
+      return name[0].toUpperCase();
     }
-    
-    return '${nameParts[0][0]}${nameParts[1][0]}'.toUpperCase();
+    final username = email.split('@')[0];
+    if (username.isEmpty) return 'U';
+    return username[0].toUpperCase();
   }
+
+  /// Check if user is a student (access level 1)
+  bool get isStudent => (accessLevel ?? 1) == 1;
+
+  /// Check if user is a tutor (access level 2 or higher)
+  bool get isTutor => (accessLevel ?? 1) >= 2;
+
+  /// Check if user is an admin (access level 3)
+  bool get isAdmin => (accessLevel ?? 1) >= 3;
 
   /// Check if user is online (last active within 5 minutes)
   bool get isOnline {
+    if (lastActive == null) return false;
     final now = DateTime.now();
-    final difference = now.difference(lastActive);
+    final difference = now.difference(lastActive!);
     return difference.inMinutes <= 5;
   }
 
   /// Get formatted last active time
   String get lastActiveFormatted {
+    if (lastActive == null) return 'Never active';
     final now = DateTime.now();
-    final difference = now.difference(lastActive);
+    final difference = now.difference(lastActive!);
 
     if (difference.inDays > 365) {
       final years = (difference.inDays / 365).floor();
@@ -142,14 +196,14 @@ class User {
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
-    
-    return 'Member since ${months[createdAt.month - 1]} ${createdAt.year}';
+
+    return 'Member since ${months[timeCreated.month - 1]} ${timeCreated.year}';
   }
 
   /// Check if user is new (joined within last 30 days)
   bool get isNewUser {
     final now = DateTime.now();
-    final difference = now.difference(createdAt);
+    final difference = now.difference(timeCreated);
     return difference.inDays <= 30;
   }
 
@@ -188,6 +242,7 @@ class User {
 
   /// Get user reputation level based on posts and comments
   String get reputationLevel {
+    if (isAdmin) return 'Admin';
     if (isTutor) return 'Tutor';
     final totalActivity = postCount + commentCount;
     if (totalActivity < 10) return 'Newcomer';
@@ -199,31 +254,35 @@ class User {
 
   /// Get badge text for UI display
   String get badgeText {
+    if (isAdmin) return 'Admin';
     if (isTutor) return 'Tutor';
     if (isNewUser) return 'New';
     return '';
   }
 
   /// Check if user can moderate content
-  bool get canModerateContent => isTutor;
+  bool get canModerateContent => isTutor; // Tutor or Admin
 
   /// Check if user can pin posts
-  bool get canPinTopics => isTutor;
+  bool get canPinTopics => isTutor; // Tutor or Admin
 
   /// Check if user can create announcements
-  bool get canCreateAnnouncements => isTutor;
+  bool get canCreateAnnouncements => isTutor; // Tutor or Admin
+
+  /// Check if user can manage users (Admin only)
+  bool get canManageUsers => isAdmin;
 
   @override
   String toString() {
-    return 'User{id: $id, name: $name, email: $email}';
+    return 'User{userId: $userId, email: $email, accessLevel: $accessLevel}';
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is User && other.id == id;
+    return other is User && other.userId == userId;
   }
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode => userId.hashCode;
 }

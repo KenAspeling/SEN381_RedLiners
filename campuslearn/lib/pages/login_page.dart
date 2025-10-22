@@ -5,6 +5,8 @@ import 'package:campuslearn/main.dart';
 import 'package:campuslearn/services/auth_service.dart';
 import 'package:campuslearn/services/api_config.dart';
 import 'package:campuslearn/providers/theme_provider.dart';
+import 'package:campuslearn/pages/register_page.dart';
+import 'package:campuslearn/widgets/forgot_password_dialog.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -62,16 +64,16 @@ class _LoginPageState extends State<LoginPage> {
         // Extract auth data from response
         final token = responseData['token'] as String;
         final user = responseData['user'];
-        final userId = user['id'].toString();
+        final userId = user['userId'].toString();
         final email = user['email'] as String;
-        final isTutor = user['isTutor'] as bool? ?? false;
+        final accessLevel = user['accessLevel'] as int? ?? 0;
 
         // Save auth data securely
         await AuthService.saveAuthData(
           token: token,
           userId: userId,
           email: email,
-          isTutor: isTutor,
+          accessLevel: accessLevel,
         );
 
         if (mounted) {
@@ -137,7 +139,7 @@ class _LoginPageState extends State<LoginPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+                    children: [
                 // Logo/App Name
                 Container(
                   height: 166,
@@ -184,7 +186,7 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
+                    color: context.appColors.textPrimary,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -193,7 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                   'Sign in to your account',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey[600],
+                    color: context.appColors.textSecondary,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -271,6 +273,10 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     elevation: 2,
+                    textStyle: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   child: _isLoading
                       ? SizedBox(
@@ -281,13 +287,7 @@ class _LoginPageState extends State<LoginPage> {
                             valueColor: AlwaysStoppedAnimation<Color>(context.appColors.background),
                           ),
                         )
-                      : Text(
-                          'Login',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      : Text('Login'),
                 ),
 
                 SizedBox(height: 16),
@@ -295,93 +295,106 @@ class _LoginPageState extends State<LoginPage> {
                 // Forgot Password
                 TextButton(
                   onPressed: () {
-                    // TODO: Implement forgot password
+                    showDialog(
+                      context: context,
+                      builder: (context) => ForgotPasswordDialog(),
+                    );
                   },
-                  child: Text(
-                    'Forgot Password?',
-                    style: TextStyle(
-                      color: context.appColors.primary,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    foregroundColor: context.appColors.primary,
+                    textStyle: TextStyle(
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  child: Text('Forgot Password?'),
                 ),
 
                 SizedBox(height: 24),
 
                 // Test Accounts Info
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: context.appColors.primaryLight.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: context.appColors.primaryLight.withOpacity(0.3),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: context.appColors.primary,
-                            size: 18,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Test Accounts',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: context.appColors.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Available accounts in database:\n'
-                        '• user@campus.edu - John Student\n'
-                        '• tutor@campus.edu - Jane Tutor\n'
-                        '• alice@campus.edu - Alice Student\n'
-                        '• bob.tutor@campus.edu - Bob Tutor\n\n'
-                        'Enter the email and password to login',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.appColors.textSecondary,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // Container(
+                //   padding: EdgeInsets.all(16),
+                //   decoration: BoxDecoration(
+                //     color: context.appColors.primaryLight.withOpacity(0.1),
+                //     borderRadius: BorderRadius.circular(12),
+                //     border: Border.all(
+                //       color: context.appColors.primaryLight.withOpacity(0.3),
+                //     ),
+                //   ),
+                //   child: Column(
+                //     crossAxisAlignment: CrossAxisAlignment.start,
+                //     children: [
+                //       Row(
+                //         children: [
+                //           Icon(
+                //             Icons.info_outline,
+                //             color: context.appColors.primary,
+                //             size: 18,
+                //           ),
+                //           SizedBox(width: 8),
+                //           Text(
+                //             'Test Accounts',
+                //             style: TextStyle(
+                //               fontSize: 14,
+                //               fontWeight: FontWeight.w600,
+                //               color: context.appColors.primary,
+                //             ),
+                //           ),
+                //         ],
+                //       ),
+                //       SizedBox(height: 8),
+                //       Text(
+                //         'Available accounts in database:\n'
+                //         '• user@campus.edu - John Student\n'
+                //         '• tutor@campus.edu - Jane Tutor\n'
+                //         '• alice@campus.edu - Alice Student\n'
+                //         '• bob.tutor@campus.edu - Bob Tutor\n\n'
+                //         'Enter the email and password to login',
+                //         style: TextStyle(
+                //           fontSize: 12,
+                //           color: context.appColors.textSecondary,
+                //           height: 1.4,
+                //         ),
+                //       ),
+                //     ],
+                //   ),
+                // ),
 
                 SizedBox(height: 24),
 
                 // Sign Up Option
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Don't have an account? ",
-                      style: TextStyle(color: context.appColors.textSecondary),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        // TODO: Navigate to sign up page
-                      },
-                      child: Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: context.appColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                Center(
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        "Don't have an account? ",
+                        style: TextStyle(color: context.appColors.textSecondary),
                       ),
-                    ),
-                  ],
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const RegisterPage()),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: context.appColors.primary,
+                          textStyle: TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: Text('Sign Up'),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+                    ],
                   ),
                 ),
               ),

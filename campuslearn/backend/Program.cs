@@ -8,17 +8,38 @@ using CampusLearnBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel to listen on all network interfaces
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    // Use PORT environment variable if available (Railway, Render, etc.)
+    // Otherwise use port 5000 for local development
+    var port = Environment.GetEnvironmentVariable("PORT") != null
+        ? int.Parse(Environment.GetEnvironmentVariable("PORT")!)
+        : 5000;
+
+    serverOptions.ListenAnyIP(port);
+    Console.WriteLine($"Server listening on port {port}");
+});
+
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Add Memory Cache
+builder.Services.AddMemoryCache();
 
 // Add Entity Framework
 builder.Services.AddDbContext<CampusLearnContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Add custom services
+builder.Services.AddSingleton<ICacheService, CacheService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<ITopicService, TopicService>();
-builder.Services.AddScoped<ICommentService, CommentService>();
+builder.Services.AddScoped<IPostService, PostService>();
+builder.Services.AddScoped<IMessageService, MessageService>();
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+// TODO: Add QueryTicketService when needed
 
 // Add JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -49,10 +70,9 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFlutterApp", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://127.0.0.1:3000") // Add your Flutter web URLs
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+        policy.AllowAnyOrigin()  // Allow all origins for development (phone, web, etc.)
+        .AllowAnyHeader()
+        .AllowAnyMethod();
     });
 });
 

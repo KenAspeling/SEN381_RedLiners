@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:campuslearn/services/auth_service.dart';
 import 'package:campuslearn/services/topic_service.dart';
 import 'package:campuslearn/services/comment_service.dart';
+import 'package:campuslearn/services/post_service.dart';
 import 'package:campuslearn/theme/app_colors.dart';
 import 'package:campuslearn/theme/theme_extensions.dart';
 import 'package:campuslearn/widgets/left_sidebar.dart';
-import 'package:campuslearn/widgets/right_sidebar.dart';
 import 'package:campuslearn/widgets/topic_detail_overlay.dart';
+import 'package:campuslearn/widgets/edit_profile_dialog.dart';
 import 'package:campuslearn/main.dart';
 import 'package:campuslearn/models/topic.dart';
 import 'package:campuslearn/models/comment.dart';
@@ -22,6 +23,12 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   late TabController _tabController;
   String _userName = 'Loading...';
   String _userEmail = 'Loading...';
+  String _roleName = 'Student';
+  String _firstName = '';
+  String _surname = '';
+  String? _phoneNumber;
+  String? _degree;
+  int? _yearOfStudy;
   List<Topic> _userTopics = [];
   List<Comment> _userComments = [];
   List<Topic> _likedTopics = [];
@@ -48,17 +55,64 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
 
   Future<void> _loadUserData() async {
     try {
+      final userIdString = await AuthService.getUserId();
+      final userId = int.tryParse(userIdString ?? '0');
+
+      if (userId != null && userId != 0) {
+        final userData = await AuthService.getUserById(userId);
+
+        if (userData != null) {
+          // Try both camelCase and PascalCase field names
+          final name = userData['name'] ?? userData['Name'] ?? '';
+          final surname = userData['surname'] ?? userData['Surname'] ?? '';
+          final email = userData['email'] ?? userData['Email'] ?? 'user@campus.edu';
+          final accessLevelName = userData['accessLevelName'] ?? userData['AccessLevelName'] ?? 'Student';
+          final phoneNumber = userData['phoneNumber'] ?? userData['PhoneNumber'];
+          final degree = userData['degree'] ?? userData['Degree'];
+          final yearOfStudy = userData['yearOfStudy'] ?? userData['YearOfStudy'];
+
+          // Capitalize first letter of role name
+          final roleName = accessLevelName.isNotEmpty
+              ? accessLevelName[0].toUpperCase() + accessLevelName.substring(1).toLowerCase()
+              : 'Student';
+
+          setState(() {
+            _userName = '$name $surname'.trim();
+            _userEmail = email;
+            _roleName = roleName;
+            _firstName = name;
+            _surname = surname;
+            _phoneNumber = phoneNumber;
+            _degree = degree;
+            _yearOfStudy = yearOfStudy is int ? yearOfStudy : (yearOfStudy != null ? int.tryParse(yearOfStudy.toString()) : null);
+          });
+
+          print('Profile loaded - Name: $name, Surname: $surname, Role: $roleName');
+        } else {
+          // Fallback to basic data
+          final email = await AuthService.getUserEmail();
+          setState(() {
+            _userEmail = email ?? 'user@campus.edu';
+            _userName = email?.split('@')[0] ?? 'User';
+            _roleName = 'Student';
+          });
+        }
+      } else {
+        // Fallback to basic data
+        final email = await AuthService.getUserEmail();
+        setState(() {
+          _userEmail = email ?? 'user@campus.edu';
+          _userName = email?.split('@')[0] ?? 'User';
+          _roleName = 'Student';
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
       final email = await AuthService.getUserEmail();
-      final userData = await AuthService.getUserDataFromToken();
-      
       setState(() {
         _userEmail = email ?? 'user@campus.edu';
-        _userName = userData?['email']?.split('@')[0] ?? 'Student';
-      });
-    } catch (e) {
-      setState(() {
-        _userName = 'Student';
-        _userEmail = 'user@campus.edu';
+        _userName = email?.split('@')[0] ?? 'User';
+        _roleName = 'Student';
       });
     }
   }
@@ -136,15 +190,11 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
       setState(() {
         _isLoadingLiked = true;
       });
-      
-      // Get all topics and filter liked ones
-      final allTopics = await TopicService.getAllTopics();
-      final likedTopics = allTopics.where((topic) => topic.isLiked).toList();
-      
-      // Get all comments and filter liked ones
-      final allComments = CommentService.getAllComments();
-      final likedComments = allComments.where((comment) => comment.isLiked).toList();
-      
+
+      // Get liked topics and comments from backend
+      final likedTopics = await PostService.getLikedTopics();
+      final likedComments = await PostService.getLikedComments();
+
       setState(() {
         _likedTopics = likedTopics;
         _likedComments = likedComments;
@@ -156,7 +206,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         _likedComments = [];
         _isLoadingLiked = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -248,7 +298,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
         title: const Text('Profile'),
         // AppBar styling now comes from theme
       ),
-      body: isDesktop 
+      body: isDesktop
         ? Row(
             children: [
               // Left sidebar with navigation
@@ -256,7 +306,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                 selectedIndex: -1, // No main nav item selected on profile page
                 hideProfileButton: true, // Hide "View Profile" button since we're on profile page
                 onNavigationTap: (index) {
-                  // Navigate back to main screen 
+                  // Navigate back to main screen
                   Navigator.of(context).pop();
                 },
               ),
@@ -264,8 +314,6 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
               Expanded(
                 child: _buildProfileContent(context),
               ),
-              // Right sidebar
-              const RightSidebar(),
             ],
           )
         : _buildProfileContent(context),
@@ -309,7 +357,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                             Row(
                               children: [
                                 Text(
-                                  _userName,
+                                  '$_userName ($_roleName)',
                                   style: TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.bold,
@@ -318,14 +366,22 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                                 ),
                                 SizedBox(width: 8),
                                 GestureDetector(
-                                  onTap: () {
-                                    // TODO: Implement edit profile functionality
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Edit profile feature coming soon!'),
-                                        backgroundColor: context.appColors.warning,
+                                  onTap: () async {
+                                    final result = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => EditProfileDialog(
+                                        currentName: _firstName,
+                                        currentSurname: _surname,
+                                        currentPhoneNumber: _phoneNumber,
+                                        currentDegree: _degree,
+                                        currentYearOfStudy: _yearOfStudy,
                                       ),
                                     );
+
+                                    // Reload user data if profile was updated
+                                    if (result == true) {
+                                      _loadUserData();
+                                    }
                                   },
                                   child: Container(
                                     padding: EdgeInsets.all(4),

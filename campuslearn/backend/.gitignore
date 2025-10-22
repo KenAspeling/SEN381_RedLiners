@@ -325,3 +325,9 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
+
+# CampusLearn specific files
+*.sql
+campuslearn*.json
+appsettings.Production.json
+*.firebase-adminsdk-*.json
