@@ -305,7 +305,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
                           labelText: 'Email *',
-                          hintText: 'your.name@belgiumcampus.ac.za',
+                          hintText: 'student_number@student.belgiumcampus.ac.za',
                           prefixIcon: Icon(Icons.email_outlined),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -318,8 +318,8 @@ class _RegisterPageState extends State<RegisterPage> {
                           if (!value.contains('@')) {
                             return 'Please enter a valid email';
                           }
-                          if (!value.toLowerCase().endsWith('@belgiumcampus.ac.za')) {
-                            return 'Email must end with @belgiumcampus.ac.za';
+                          if (!value.toLowerCase().endsWith('@student.belgiumcampus.ac.za')) {
+                            return 'Email must end with @student.belgiumcampus.ac.za';
                           }
                           return null;
                         },

@@ -408,39 +408,6 @@ class _CreatePageState extends State<CreatePage> {
                     },
                   ),
                   SizedBox(height: 16),
-
-                  // Document upload placeholder
-                  Container(
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: context.appColors.textSecondary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: context.appColors.textSecondary.withOpacity(0.2),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.attach_file,
-                          size: 16,
-                          color: context.appColors.textSecondary,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Document attachments coming soon',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.appColors.textSecondary,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 24),
                 ],
 
                 if (!_isCreatingTopic)

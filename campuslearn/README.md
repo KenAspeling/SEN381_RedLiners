@@ -53,7 +53,6 @@ flutter run -d windows     # Windows
 flutter run -d chrome      # Web
 flutter run                # Connected device
 ```
-
 ## 🛠 Technology Stack
 
 ### Frontend
@@ -132,6 +131,26 @@ static const String productionUrl = String.fromEnvironment(
 );
 ```
 
+## 📱 Building for Distribution
+
+### Android
+
+```bash
+# Build APK with production backend
+build_android.bat https://your-backend-url.railway.app
+```
+
+Output: `build/app/outputs/flutter-apk/app-release.apk`
+
+### Windows
+
+```bash
+# Build Windows executable
+build_windows.bat https://your-backend-url.railway.app
+```
+
+Output: `CampusLearn-Windows-v1.0.0/`
+
 ## 🧪 Testing
 
 ```bash
@@ -169,12 +188,20 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Trevor Mutendera 577604**
 - **Johannes Cornelius Muller 578294**
 
+
 ## 🙏 Acknowledgments
 
 - Belgium Campus ITversity for the educational environment
 - Flutter team for the amazing cross-platform framework
 - ASP.NET Core team for the robust backend framework
 - All contributors and testers
+
+## 🔒 Security
+
+- Never commit credentials to GitHub
+- Use environment variables for secrets
+- Keep dependencies updated
+- Use HTTPS in production
 
 ## 📊 Status
 

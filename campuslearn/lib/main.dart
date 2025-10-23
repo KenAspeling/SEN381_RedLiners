@@ -238,7 +238,7 @@ class _MainScreenState extends State<MainScreen> {
         if (isDesktop) {
           // Desktop layout with sidebars
           return Scaffold(
-            floatingActionButton: FloatingActionButton(
+            floatingActionButton: _selectedIndex == 2 ? null : FloatingActionButton(
               onPressed: () {
                 Navigator.push(
                   context,
@@ -318,7 +318,7 @@ class _MainScreenState extends State<MainScreen> {
         } else {
           // Mobile/tablet layout with bottom navigation
           return Scaffold(
-            floatingActionButton: FloatingActionButton(
+            floatingActionButton: _selectedIndex == 2 ? null : FloatingActionButton(
               onPressed: () {
                 Navigator.push(
                   context,
